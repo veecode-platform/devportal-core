@@ -35,6 +35,7 @@ allowed to lose** on the next upstream merge.
 |---|---|---|
 | `.github/workflows/upstream-sync.yaml` | added | Weekly automated merge from `upstream/main` → `veecode/main` and `upstream/release-1.10` → `veecode/release-1.10`; opens an issue on conflict. |
 | `.github/workflows/secret-scan.yaml` | added | Runs gitleaks on push and pull_request against `veecode/**` branches. |
+| `.github/workflows/publish-edge.yaml` | added | `workflow_dispatch`-only build/publish channel for `docker.io/veecode/devportal` (M1). Lives on `veecode/release-1.10` (where it actually runs) **and** on `veecode/main` (required for GitHub to register a `workflow_dispatch` workflow at all — registration only happens from the default branch; see "Documented deviations from the M1 spec" below). Reuses `./.github/actions/get-sha` and `./.github/actions/docker-build` unmodified; drops the Quay tag-lifecycle logic from `next-build-image.yaml` entirely (no Docker Hub equivalent). |
 | `AGENTS.md` (this file) | added | Drift manifest and fork conventions. |
 
 Upstream files modified: **none**.
@@ -79,6 +80,43 @@ an upstream file) must update this table in the same PR.
   since fork creation, so the first sync dry-run's merges are no-ops and
   its `git push` never actually updates a ref. Treat the bot's push as
   compatible with the ruleset by reasoning, not as proven.
+
+## Documented deviations from the M1 spec
+
+- **Secret names: `DOCKER_USERNAME`/`DOCKER_PASSWORD`, not
+  `DOCKERHUB_USERNAME`/`DOCKERHUB_TOKEN`**. The M1 spec (and its M0
+  prerequisite) called for a dedicated, push-only credential pair
+  provisioned specifically for this fork. Decision by Gio, 2026-08-07:
+  `publish-edge.yaml` uses the existing org-level `DOCKER_USERNAME` /
+  `DOCKER_PASSWORD` secrets already visible to this repo (see "Known risk:
+  shared Docker Hub org secret" below) instead of provisioning a new pair.
+  This is a decision to accept the pre-existing exposure rather than an
+  oversight — the dedicated-credential mitigation described in the M0
+  prerequisite was not carried out.
+
+- **`publish-edge.yaml` exists on two branches, not one.** The M1 spec says
+  to add it on `veecode/release-1.10` only. In practice, GitHub does not
+  register a `workflow_dispatch` workflow for dispatch via API/CLI (any
+  `--ref`) until the file exists on the repository's **default branch**
+  (`veecode/main`); confirmed empirically — `GET
+  .../actions/workflows/publish-edge.yaml` 404'd with the file present only
+  on `release-1.10`, and started returning the workflow (`state: active`)
+  only after the identical file was also committed to `veecode/main`. The
+  copy on `veecode/main` cannot run unattended (workflow_dispatch has no
+  push/PR trigger); the copy on `release-1.10` is the one that actually
+  executes when dispatched with `--ref veecode/release-1.10`.
+
+- **Per-arch tags persist permanently in the shared namespace.** Dropping
+  the Quay tag-lifecycle job (per the M1 spec, correctly — there is no
+  Docker Hub equivalent) also drops its cleanup step. Upstream deletes its
+  per-arch intermediate tags (e.g. `next-amd64`) after building the
+  multi-arch manifest list; `publish-edge.yaml`'s per-arch tags (e.g.
+  `3.0.0-alpha.1-amd64`) have no such cleanup and will accumulate in
+  `docker.io/veecode/devportal` on every publish run. None of them are
+  `latest`/`stable`/`2.x`, so this does not violate the hard tag rule, but
+  it is a visible, uncleaned artifact in a namespace shared with
+  devportal-platform's `publish.yml`. Not remediated here; flag for a
+  follow-up if the accumulation becomes a problem.
 
 ## Actions hygiene
 
