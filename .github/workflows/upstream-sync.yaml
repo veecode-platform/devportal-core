@@ -37,13 +37,17 @@ jobs:
         run: git remote add upstream https://github.com/redhat-developer/rhdh.git
 
       - name: Fetch upstream
-        run: git fetch upstream "${{ matrix.upstream_branch }}"
+        env:
+          UPSTREAM_BRANCH: ${{ matrix.upstream_branch }}
+        run: git fetch upstream "$UPSTREAM_BRANCH"
 
       - name: Attempt merge
         id: merge
+        env:
+          UPSTREAM_BRANCH: ${{ matrix.upstream_branch }}
         run: |
           set +e
-          git merge --no-edit "upstream/${{ matrix.upstream_branch }}"
+          git merge --no-edit "upstream/$UPSTREAM_BRANCH"
           status=$?
           if [ "$status" -ne 0 ]; then
             files=$(git diff --name-only --diff-filter=U)
@@ -58,7 +62,9 @@ jobs:
 
       - name: Push merged branch
         if: steps.merge.outputs.status == '0'
-        run: git push origin "HEAD:${{ matrix.veecode_branch }}"
+        env:
+          VEECODE_BRANCH: ${{ matrix.veecode_branch }}
+        run: git push origin "HEAD:$VEECODE_BRANCH"
 
       - name: Open conflict issue
         if: steps.merge.outputs.status != '0'
