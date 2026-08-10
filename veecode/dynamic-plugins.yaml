@@ -1,0 +1,23 @@
+# /opt/app-root/src/dynamic-plugins.yaml — baked default, additive (M2 revision 3.1)
+#
+# Fixed file name, read from the CWD by the vendorized Python installer — no
+# override via env var (install-dynamic-plugins.py:1411). The 2.x image
+# always shipped an equivalent baked file; the operator never had to create
+# it from scratch (D3).
+#
+# Minimal content by conscious decision: zero active plugins by default. The
+# VeeCode "chrome" set lands in M4 through the same mechanism — overridden by
+# a bind mount, never edited here at runtime.
+#
+# To enable plugins: mount your own dynamic-plugins.yaml over this path
+# (read-only) — the same pattern the 2.x compose used. Browse the plugins
+# pre-packaged in this image in /opt/app-root/src/dynamic-plugins.default.yaml
+# (a build-generated, documentation-only vitrine).
+#
+# Do NOT add "includes:" pointing at dynamic-plugins.default.yaml — in this
+# image that file is a documentation-only vitrine (D6), not a boot artifact.
+# Copy entries from it into this file instead.
+#
+# Do NOT use "preInstalled: true" — this image's vendorized Python installer
+# doesn't support that key.
+plugins: []

@@ -1,0 +1,92 @@
+# Copyright VeeCode Platform
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# M2 gate #5 — ENTRYPOINT drift assertion (additive, VeeCode fork only).
+#
+# The fork's Containerfile (branch veecode/release-1.10) ends in a NEW
+# ENTRYPOINT that is a retyped COPY of upstream's array plus one appended
+# "--config app-config.veecode.yaml" pair. Because it is a copy, not a live
+# reference, upstream can change its own array (a new flag, a renamed config
+# file) and the copy goes stale silently. This workflow fails when that
+# happens: it compares the fork's array minus the last two elements against
+# the ENTRYPOINT in the live upstream/release-1.10 Containerfile.
+#
+# Scheduled runs execute from the default branch (veecode/main) — a GitHub
+# constraint — so the job always checks out veecode/release-1.10 explicitly.
+
+name: Entrypoint Drift
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Mondays 08:30 UTC — after the weekly Upstream Sync cron has merged.
+    - cron: "30 8 * * 1"
+  push:
+    branches:
+      - veecode/release-1.10
+    paths:
+      - build/containerfiles/Containerfile
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  assert-entrypoint-drift:
+    name: Assert fork ENTRYPOINT matches live upstream
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout veecode/release-1.10
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          ref: veecode/release-1.10
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Fetch live upstream release-1.10
+        run: |
+          git remote add upstream https://github.com/redhat-developer/rhdh.git
+          git fetch --depth=1 upstream release-1.10
+
+      - name: Assert ENTRYPOINT base slice matches upstream
+        run: |
+          set -euo pipefail
+
+          # FETCH_HEAD is the ref `git fetch upstream release-1.10` just wrote —
+          # not dependent on remote-tracking ref updates.
+          UPSTREAM_ENTRYPOINT_SRC=$(git show FETCH_HEAD:build/containerfiles/Containerfile \
+            | awk '/^ENTRYPOINT/{flag=1} flag{print} /\]/{if(flag)exit}')
+          # Verified 2026-08-07: upstream's ENTRYPOINT is a single line
+          # (Containerfile:362); if upstream later wraps it across lines, the
+          # awk above still covers it (it accumulates until it hits ']').
+          UPSTREAM_ARRAY=$(echo "$UPSTREAM_ENTRYPOINT_SRC" | sed -E 's/^ENTRYPOINT\s*//' | jq -c '.')
+
+          FORK_ENTRYPOINT_SRC=$(grep '^ENTRYPOINT' build/containerfiles/Containerfile | tail -1)
+          FORK_FULL=$(echo "$FORK_ENTRYPOINT_SRC" | sed -E 's/^ENTRYPOINT\s*//' | jq -c '.')
+          FORK_TAIL=$(echo "$FORK_FULL" | jq -c '.[-2:]')
+          [ "$FORK_TAIL" = '["--config","app-config.veecode.yaml"]' ] \
+            || { echo "::error::DRIFT: the fork's Containerfile does not end with exactly --config app-config.veecode.yaml"; exit 1; }
+          FORK_UPSTREAM_SLICE=$(echo "$FORK_FULL" | jq -c '.[0:-2]')
+
+          # Do not sort either side: the order encodes config precedence and
+          # the position of --require relative to packages/backend.
+          [ "$UPSTREAM_ARRAY" = "$FORK_UPSTREAM_SLICE" ] \
+            || { echo "::error::DRIFT: upstream/release-1.10's ENTRYPOINT no longer matches the base copied into the fork's Containerfile"; echo "upstream: $UPSTREAM_ARRAY"; echo "fork slice: $FORK_UPSTREAM_SLICE"; exit 1; }
+
+          echo "No drift: fork ENTRYPOINT = upstream array + [--config app-config.veecode.yaml]"
+          echo "upstream: $UPSTREAM_ARRAY"

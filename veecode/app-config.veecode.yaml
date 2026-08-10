@@ -1,0 +1,17 @@
+# /opt/app-root/src/app-config.veecode.yaml — additive, new file (M2)
+#
+# Loaded as the fourth --config in the image ENTRYPOINT. The upstream image
+# ships no auth.providers in any baked config layer (M1 finding) — this file
+# supplies the guest provider, mapped to the admin entity. Production auth
+# posture is an M6 DECIDE.
+#
+# dangerouslyAllowOutsideDevelopment mirrors the 2.x platform default
+# (app-config.yaml:100-103 there): the bundled backend runs with NODE_ENV
+# unset, and the guest module refuses to mint tokens outside development
+# without it (verified against this image, 2026-08-10).
+auth:
+  providers:
+    guest:
+      userEntityRef: user:default/admin
+      ownershipEntityRefs: [group:default/admins]
+      dangerouslyAllowOutsideDevelopment: true
