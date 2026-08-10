@@ -40,7 +40,7 @@ allowed to lose** on the next upstream merge.
 |---|---|---|
 | `.github/workflows/upstream-sync.yaml` | added | Weekly automated merge from `upstream/main` → `veecode/main` and `upstream/release-1.10` → `veecode/release-1.10`; opens an issue on conflict. |
 | `.github/workflows/secret-scan.yaml` | added | Runs gitleaks on push and pull_request against `veecode/**` branches. |
-| `.github/workflows/publish-edge.yaml` | added | `workflow_dispatch`-only build/publish channel for `docker.io/veecode/devportal` (M1). Lives on `veecode/release-1.10` (where it actually runs) **and** on `veecode/main` (required for GitHub to register a `workflow_dispatch` workflow at all — registration only happens from the default branch; see "Documented deviations from the M1 spec" below). Reuses `./.github/actions/get-sha` and `./.github/actions/docker-build` unmodified; drops the Quay tag-lifecycle logic from `next-build-image.yaml` entirely (no Docker Hub equivalent). |
+| `.github/workflows/publish-edge.yaml` | added | `workflow_dispatch`-only build/publish channel for `docker.io/veecode/devportal` (M1). Since the M3.5 re-anchor it runs from `veecode/main` (the product branch — first main-built publish: `3.0.0-alpha.5`, run 31439078480); the `veecode/release-1.10` copy remains but that line is frozen at `3.0.0-alpha.4` (see "Documented deviations from the M1 spec" below for the two-branch registration history). Reuses `./.github/actions/get-sha` and `./.github/actions/docker-build` unmodified; drops the Quay tag-lifecycle logic from `next-build-image.yaml` entirely (no Docker Hub equivalent). |
 | `.github/workflows/entrypoint-drift.yaml` | added | M2 gate #5: asserts the fork's ENTRYPOINT on `veecode/main` (minus the appended `--config app-config.veecode.yaml` pair) equals the live `upstream/main` array. Retargeted from `release-1.10` to `main` at M3.5 (the re-anchor) since `veecode/main` is now the product/image-building branch. Runs entirely on `veecode/main`: `schedule`/`workflow_dispatch` (GitHub only registers those from the default branch) and the Containerfile-changes `push` trigger now share the same branch, so no cross-branch checkout is needed. `veecode/release-1.10`'s copy is untouched (frozen at `3.0.0-alpha.4`) and still asserts against upstream `release-1.10`. |
 | `veecode/dynamic-plugins.yaml` | added | Baked default `dynamic-plugins.yaml` (`plugins: []`, no `includes:`) COPY'd into the image — M2 D3. Ported to `veecode/main` at M3.5 (the product branch going forward); the `veecode/release-1.10` copy remains, frozen at `3.0.0-alpha.4`. |
 | `veecode/app-config.veecode.yaml` | added | Guest→admin auth mapping (with `dangerouslyAllowOutsideDevelopment: true`, mirroring the 2.x platform default), loaded as the image ENTRYPOINT's fourth `--config` — M2. Ported to `veecode/main` at M3.5 (the product branch going forward); the `veecode/release-1.10` copy remains, frozen at `3.0.0-alpha.4`. |
@@ -132,10 +132,12 @@ an upstream file) must update this table in the same PR.
   (`veecode/main`); confirmed empirically — `GET
   .../actions/workflows/publish-edge.yaml` 404'd with the file present only
   on `release-1.10`, and started returning the workflow (`state: active`)
-  only after the identical file was also committed to `veecode/main`. The
-  copy on `veecode/main` cannot run unattended (workflow_dispatch has no
-  push/PR trigger); the copy on `release-1.10` is the one that actually
-  executes when dispatched with `--ref veecode/release-1.10`.
+  only after the identical file was also committed to `veecode/main`.
+  Through M3 the copy on `release-1.10` was the one that actually executed
+  (dispatched with `--ref veecode/release-1.10`, alphas 1-4). Since the
+  M3.5 re-anchor (ADR-002) the roles flipped: `veecode/main` is the product
+  branch and dispatches run with `--ref veecode/main` (first: `3.0.0-alpha.5`);
+  the `release-1.10` copy remains but its line is frozen at `3.0.0-alpha.4`.
 
 - **Per-arch tags persist permanently in the shared namespace.** Dropping
   the Quay tag-lifecycle job (per the M1 spec, correctly — there is no
