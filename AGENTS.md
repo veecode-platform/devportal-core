@@ -36,9 +36,12 @@ allowed to lose** on the next upstream merge.
 | `.github/workflows/upstream-sync.yaml` | added | Weekly automated merge from `upstream/main` → `veecode/main` and `upstream/release-1.10` → `veecode/release-1.10`; opens an issue on conflict. |
 | `.github/workflows/secret-scan.yaml` | added | Runs gitleaks on push and pull_request against `veecode/**` branches. |
 | `.github/workflows/publish-edge.yaml` | added | `workflow_dispatch`-only build/publish channel for `docker.io/veecode/devportal` (M1). Lives on `veecode/release-1.10` (where it actually runs) **and** on `veecode/main` (required for GitHub to register a `workflow_dispatch` workflow at all — registration only happens from the default branch; see "Documented deviations from the M1 spec" below). Reuses `./.github/actions/get-sha` and `./.github/actions/docker-build` unmodified; drops the Quay tag-lifecycle logic from `next-build-image.yaml` entirely (no Docker Hub equivalent). |
+| `.github/workflows/entrypoint-drift.yaml` | added | M2 gate #5: asserts the fork's ENTRYPOINT on `veecode/release-1.10` (minus the appended `--config app-config.veecode.yaml` pair) equals the live `upstream/release-1.10` array. Lives on `veecode/main` (GitHub only registers `schedule`/`workflow_dispatch` workflows from the default branch) **and** on `veecode/release-1.10` (push trigger on Containerfile changes). |
+| `veecode/dynamic-plugins.yaml` | added | Baked default `dynamic-plugins.yaml` (`plugins: []`, no `includes:`) COPY'd into the image — M2 D3. Lives on `veecode/release-1.10` only. |
+| `veecode/app-config.veecode.yaml` | added | Guest→admin auth mapping (with `dangerouslyAllowOutsideDevelopment: true`, mirroring the 2.x platform default), loaded as the image ENTRYPOINT's fourth `--config` — M2. Lives on `veecode/release-1.10` only. |
 | `AGENTS.md` (this file) | added | Drift manifest and fork conventions. |
 
-Upstream files modified: **none**.
+Upstream files modified: **one** — `build/containerfiles/Containerfile` on `veecode/release-1.10`, strictly **append-only** (M2): five VeeCode blocks appended after the last upstream instruction (baked `dynamic-plugins.yaml`, baked `app-config.veecode.yaml`, `ENV SEGMENT_TEST_MODE=true`, a build-generated documentation-only plugin vitrine `dynamic-plugins.default.yaml`, and a new single-line ENTRYPOINT retyping the upstream array plus one extra `--config`). No upstream line was edited or removed; staleness of the retyped ENTRYPOINT copy is guarded by `entrypoint-drift.yaml`.
 
 Every PR that introduces drift (a new file under our control, or an edit to
 an upstream file) must update this table in the same PR.
