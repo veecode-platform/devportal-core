@@ -14,16 +14,18 @@
 #
 # M2 gate #5 — ENTRYPOINT drift assertion (additive, VeeCode fork only).
 #
-# The fork's Containerfile (branch veecode/release-1.10) ends in a NEW
-# ENTRYPOINT that is a retyped COPY of upstream's array plus one appended
+# The fork's Containerfile (branch veecode/main — the fork's product/
+# image-building branch as of M3.5) ends in a NEW ENTRYPOINT that is a
+# retyped COPY of upstream's array plus one appended
 # "--config app-config.veecode.yaml" pair. Because it is a copy, not a live
 # reference, upstream can change its own array (a new flag, a renamed config
 # file) and the copy goes stale silently. This workflow fails when that
 # happens: it compares the fork's array minus the last two elements against
-# the ENTRYPOINT in the live upstream/release-1.10 Containerfile.
+# the ENTRYPOINT in the live upstream/main Containerfile.
 #
-# Scheduled runs execute from the default branch (veecode/main) — a GitHub
-# constraint — so the job always checks out veecode/release-1.10 explicitly.
+# veecode/main is also this repo's default branch, so scheduled runs, the
+# push trigger, and workflow_dispatch all operate on the same branch — no
+# cross-branch checkout is needed here.
 
 name: Entrypoint Drift
 
@@ -34,7 +36,7 @@ on:
     - cron: "30 8 * * 1"
   push:
     branches:
-      - veecode/release-1.10
+      - veecode/main
     paths:
       - build/containerfiles/Containerfile
 
@@ -51,17 +53,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Checkout veecode/release-1.10
+      - name: Checkout veecode/main
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
-          ref: veecode/release-1.10
+          ref: veecode/main
           fetch-depth: 1
           persist-credentials: false
 
-      - name: Fetch live upstream release-1.10
+      - name: Fetch live upstream main
         run: |
           git remote add upstream https://github.com/redhat-developer/rhdh.git
-          git fetch --depth=1 upstream release-1.10
+          git fetch --depth=1 upstream main
 
       - name: Assert ENTRYPOINT base slice matches upstream
         run: |
@@ -86,7 +88,7 @@ jobs:
           # Do not sort either side: the order encodes config precedence and
           # the position of --require relative to packages/backend.
           [ "$UPSTREAM_ARRAY" = "$FORK_UPSTREAM_SLICE" ] \
-            || { echo "::error::DRIFT: upstream/release-1.10's ENTRYPOINT no longer matches the base copied into the fork's Containerfile"; echo "upstream: $UPSTREAM_ARRAY"; echo "fork slice: $FORK_UPSTREAM_SLICE"; exit 1; }
+            || { echo "::error::DRIFT: upstream/main's ENTRYPOINT no longer matches the base copied into the fork's Containerfile"; echo "upstream: $UPSTREAM_ARRAY"; echo "fork slice: $FORK_UPSTREAM_SLICE"; exit 1; }
 
           echo "No drift: fork ENTRYPOINT = upstream array + [--config app-config.veecode.yaml]"
           echo "upstream: $UPSTREAM_ARRAY"

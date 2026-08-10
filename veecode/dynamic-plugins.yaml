@@ -1,0 +1,28 @@
+# /opt/app-root/src/dynamic-plugins.yaml — baked default, additive (M2 revision 3.1)
+#
+# Fixed file name: the npm installer
+# (@red-hat-developer-hub/cli-module-install-dynamic-plugins@0.4.0) reads this
+# same fixed dynamic-plugins.yaml at CWD via the generated
+# install-dynamic-plugins.sh wrapper. The 2.x image always shipped an
+# equivalent baked file; the operator never had to create it from scratch
+# (D3).
+#
+# Minimal content by conscious decision: zero active plugins by default. The
+# VeeCode "chrome" set lands in M4 through the same mechanism — overridden by
+# a bind mount, never edited here at runtime.
+#
+# To enable plugins: mount your own dynamic-plugins.yaml over this path
+# (read-only) — the same pattern the 2.x compose used. Browse the plugins
+# pre-packaged in this image with: ls dynamic-plugins/dist/ (each directory
+# name is the exact "package:" path to use here, e.g.
+# ./dynamic-plugins/dist/backstage-community-plugin-tech-radar).
+#
+# Note on "includes: [dynamic-plugins.default.yaml]" (the upstream-documented
+# convention): that name is a placeholder the installer replaces when
+# CATALOG_INDEX_IMAGE is set. This image ships no file at that path and sets
+# no CATALOG_INDEX_IMAGE default, so without the env var the installer warns
+# and skips it — same as stock upstream.
+#
+# Do NOT use "preInstalled: true" — this image's plugin installer doesn't
+# support that key.
+plugins: []

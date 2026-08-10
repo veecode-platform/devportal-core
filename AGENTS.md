@@ -10,10 +10,15 @@ making structural changes here.
 
 - `main` — upstream mirror. Never receives our commits directly; only the
   weekly sync workflow writes to it (fast-forward from `upstream/main`).
-- `veecode/main` — **default branch**. Our drift over upstream `main` lives
-  here. All feature work and PRs target this branch.
+- `veecode/main` — **default branch, and the product/image-building branch as
+  of M3.5** (re-anchor, [ADR-002](https://github.com/veecode-platform/devportal-planning/blob/main/docs/adr/002-reanchor-to-main.md)).
+  Our drift over upstream `main` lives here — including the six append-only
+  Containerfile blocks and the `veecode/` files (see below). All feature
+  work, PRs, and the `3.0.0-alpha.5`+/`:edge` image line build from this
+  branch.
 - `veecode/release-1.10` — stable production line, tracks upstream
-  `release-1.10`.
+  `release-1.10`. **Frozen at `3.0.0-alpha.4`** per ADR-002; no further drift
+  lands here going forward (the product line moved to `veecode/main`).
 
 ## The additive-first rule
 
@@ -36,13 +41,35 @@ allowed to lose** on the next upstream merge.
 | `.github/workflows/upstream-sync.yaml` | added | Weekly automated merge from `upstream/main` → `veecode/main` and `upstream/release-1.10` → `veecode/release-1.10`; opens an issue on conflict. |
 | `.github/workflows/secret-scan.yaml` | added | Runs gitleaks on push and pull_request against `veecode/**` branches. |
 | `.github/workflows/publish-edge.yaml` | added | `workflow_dispatch`-only build/publish channel for `docker.io/veecode/devportal` (M1). Lives on `veecode/release-1.10` (where it actually runs) **and** on `veecode/main` (required for GitHub to register a `workflow_dispatch` workflow at all — registration only happens from the default branch; see "Documented deviations from the M1 spec" below). Reuses `./.github/actions/get-sha` and `./.github/actions/docker-build` unmodified; drops the Quay tag-lifecycle logic from `next-build-image.yaml` entirely (no Docker Hub equivalent). |
-| `.github/workflows/entrypoint-drift.yaml` | added | M2 gate #5: asserts the fork's ENTRYPOINT on `veecode/release-1.10` (minus the appended `--config app-config.veecode.yaml` pair) equals the live `upstream/release-1.10` array. Lives on `veecode/main` (GitHub only registers `schedule`/`workflow_dispatch` workflows from the default branch) **and** on `veecode/release-1.10` (push trigger on Containerfile changes). |
-| `veecode/dynamic-plugins.yaml` | added | Baked default `dynamic-plugins.yaml` (`plugins: []`, no `includes:`) COPY'd into the image — M2 D3. Lives on `veecode/release-1.10` only. |
-| `veecode/app-config.veecode.yaml` | added | Guest→admin auth mapping (with `dangerouslyAllowOutsideDevelopment: true`, mirroring the 2.x platform default), loaded as the image ENTRYPOINT's fourth `--config` — M2. Lives on `veecode/release-1.10` only. |
-| `veecode/regenerate-extensions-install.js` | added | Stateless Postgres→YAML pre-step ported from devportal-platform's ADR-014 (`docker/regenerate-extensions-install.js`) — M3 front 3, decision Q7. Staged in the image (COPY only) but never executed by any code path here — no ENTRYPOINT/CMD reference to it; orchestration outside this repo chains it ahead of the installer at the install-step (`node regenerate-extensions-install.js --config <...> && sh install-dynamic-plugins.sh <root>`). Trimmed vs. the 2.x original: CWD-relative paths instead of `/app`, and the `EXTENSIONS_PRESTEP_FAIL_CLOSED`/exit-78 escape hatch dropped entirely (D2: this fork never fails closed on boot). Lives on `veecode/release-1.10` only. |
+| `.github/workflows/entrypoint-drift.yaml` | added | M2 gate #5: asserts the fork's ENTRYPOINT on `veecode/main` (minus the appended `--config app-config.veecode.yaml` pair) equals the live `upstream/main` array. Retargeted from `release-1.10` to `main` at M3.5 (the re-anchor) since `veecode/main` is now the product/image-building branch. Runs entirely on `veecode/main`: `schedule`/`workflow_dispatch` (GitHub only registers those from the default branch) and the Containerfile-changes `push` trigger now share the same branch, so no cross-branch checkout is needed. `veecode/release-1.10`'s copy is untouched (frozen at `3.0.0-alpha.4`) and still asserts against upstream `release-1.10`. |
+| `veecode/dynamic-plugins.yaml` | added | Baked default `dynamic-plugins.yaml` (`plugins: []`, no `includes:`) COPY'd into the image — M2 D3. Ported to `veecode/main` at M3.5 (the product branch going forward); the `veecode/release-1.10` copy remains, frozen at `3.0.0-alpha.4`. |
+| `veecode/app-config.veecode.yaml` | added | Guest→admin auth mapping (with `dangerouslyAllowOutsideDevelopment: true`, mirroring the 2.x platform default), loaded as the image ENTRYPOINT's fourth `--config` — M2. Ported to `veecode/main` at M3.5 (the product branch going forward); the `veecode/release-1.10` copy remains, frozen at `3.0.0-alpha.4`. |
+| `veecode/regenerate-extensions-install.js` | added | Stateless Postgres→YAML pre-step ported from devportal-platform's ADR-014 (`docker/regenerate-extensions-install.js`) — M3 front 3, decision Q7. Staged in the image (COPY only) but never executed by any code path here — no ENTRYPOINT/CMD reference to it; orchestration outside this repo chains it ahead of the installer at the install-step (`node regenerate-extensions-install.js --config <...> && sh install-dynamic-plugins.sh <root>`). Trimmed vs. the 2.x original: CWD-relative paths instead of `/app`, and the `EXTENSIONS_PRESTEP_FAIL_CLOSED`/exit-78 escape hatch dropped entirely (D2: this fork never fails closed on boot). Ported to `veecode/main` at M3.5 (the product branch going forward); the `veecode/release-1.10` copy remains, frozen at `3.0.0-alpha.4`. |
 | `AGENTS.md` (this file) | added | Drift manifest and fork conventions. |
 
-Upstream files modified: **one** — `build/containerfiles/Containerfile` on `veecode/release-1.10`, strictly **append-only**. M2 appended four blocks after the last upstream instruction (baked `dynamic-plugins.yaml`, baked `app-config.veecode.yaml`, `ENV SEGMENT_TEST_MODE=true`, and a new single-line ENTRYPOINT retyping the upstream array plus one extra `--config`). A fifth block (a build-generated documentation-only vitrine at `dynamic-plugins.default.yaml`) shipped in `3.0.0-alpha.2` and was removed on 2026-08-10 (D6 reversed): that filename is a live reserved placeholder in the upstream installer contract (`includes:` entry replaced via `CATALOG_INDEX_IMAGE`), and baking a file there shadows upstream behavior. M3 front 3 (Q7) appended a sixth block: `COPY veecode/regenerate-extensions-install.js` at the WORKDIR root plus a `chmod a=r`, staged after the ENTRYPOINT with no ENTRYPOINT/CMD change of its own. No upstream line was edited or removed; staleness of the retyped ENTRYPOINT copy is guarded by `entrypoint-drift.yaml`, which reads only the last `^ENTRYPOINT` line and is unaffected by blocks appended after it.
+Upstream files modified: **one** — `build/containerfiles/Containerfile`, strictly **append-only**. M2 appended four blocks after the last upstream instruction (baked `dynamic-plugins.yaml`, baked `app-config.veecode.yaml`, `ENV SEGMENT_TEST_MODE=true`, and a new single-line ENTRYPOINT retyping the upstream array plus one extra `--config`). A fifth block (a build-generated documentation-only vitrine at `dynamic-plugins.default.yaml`) shipped in `3.0.0-alpha.2` and was removed on 2026-08-10 (D6 reversed): that filename is a live reserved placeholder in the upstream installer contract (`includes:` entry replaced via `CATALOG_INDEX_IMAGE`), and baking a file there shadows upstream behavior. M3 front 3 (Q7) appended a sixth block: `COPY veecode/regenerate-extensions-install.js` at the WORKDIR root plus a `chmod a=r`, staged after the ENTRYPOINT with no ENTRYPOINT/CMD change of its own. No upstream line was edited or removed; staleness of the retyped ENTRYPOINT copy is guarded by `entrypoint-drift.yaml`, which reads only the last `^ENTRYPOINT` line and is unaffected by blocks appended after it.
+
+**M3.5 re-anchor**: these same six blocks were ported, unchanged, onto
+`veecode/main`'s Containerfile — upstream's ENTRYPOINT array and WORKDIR
+(`/opt/app-root/src`) are byte-identical between `release-1.10` and `main`,
+so the port was a straight copy. `veecode/main` is now the
+product/image-building branch (`3.0.0-alpha.5`+ ≡ `:edge`); the
+`veecode/release-1.10` Containerfile is untouched and frozen at
+`3.0.0-alpha.4`. One thing changed underneath the port: on `veecode/main`,
+`install-dynamic-plugins.sh` is generated by the npm package
+`@red-hat-developer-hub/cli-module-install-dynamic-plugins@0.4.0`, not the
+vendorized Python installer (`install-dynamic-plugins.py`) that
+`release-1.10`'s Backstage line ships — the npm installer reads the same
+fixed `dynamic-plugins.yaml` at CWD, so the M2 D3 baked-file contract holds
+unchanged.
+
+**Value delta introduced by the port**: `veecode/main` carries upstream's
+own *development* `SEGMENT_WRITE_KEY` baked into its Containerfile;
+`veecode/release-1.10` carries upstream's *production* key for its older
+Backstage line. Both are inert here regardless: our `ENV
+SEGMENT_TEST_MODE=true` (M2 block 3, appended after upstream's own
+`SEGMENT_TEST_MODE=false`) disables Segment telemetry outright, independent
+of which key ships underneath it.
 
 Every PR that introduces drift (a new file under our control, or an edit to
 an upstream file) must update this table in the same PR.

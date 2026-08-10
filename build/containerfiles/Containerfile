@@ -382,3 +382,47 @@ ENV NODE_OPTIONS="--no-node-snapshot"
 ENTRYPOINT ["node", "--require", "./instrumentation.js", "packages/backend", "--config", "app-config.yaml", "--config", "app-config.example.yaml", "--config", "app-config.example.production.yaml"]
 
 # append Brew metadata here
+# append Brew metadata here
+# ---------------------------------------------------------------------------
+# VeeCode fork additions (M2) — append-only drift, manifested in AGENTS.md.
+# Spec: devportal-planning docs/milestones/M2.md (revision 3.1).
+# ---------------------------------------------------------------------------
+
+# M2 block 1 (D3): baked minimal dynamic-plugins.yaml — zero active plugins by
+# default; operators mount their own file over this path (same pattern as 2.x).
+COPY --chown=1001:0 veecode/dynamic-plugins.yaml /opt/app-root/src/dynamic-plugins.yaml
+
+# M2 block 2: guest -> admin auth mapping (production posture is an M6 DECIDE).
+COPY --chown=1001:0 veecode/app-config.veecode.yaml /opt/app-root/src/app-config.veecode.yaml
+
+# M2 block 3: neutralize Red Hat's Segment telemetry. Upstream sets
+# SEGMENT_TEST_MODE=false earlier in this stage; the last ENV wins.
+ENV SEGMENT_TEST_MODE=true
+
+# M2 block 4 (D6, reversed): the build-generated vitrine that lived here was
+# removed on 2026-08-10 — dynamic-plugins.default.yaml is a live reserved name
+# in the upstream installer contract (the includes: placeholder replaced via
+# CATALOG_INDEX_IMAGE); baking a file at that path shadows upstream behavior.
+# Browse pre-packaged plugins with: ls dynamic-plugins/dist/
+
+# M2 block 5 (D1): new ENTRYPOINT — a retyped copy of the upstream array above
+# plus one appended --config pair. Kept on a single physical line on purpose:
+# the CI drift assertion reads one physical line. Do not reflow with "\".
+ENTRYPOINT ["node", "--require", "./instrumentation.js", "packages/backend", "--config", "app-config.yaml", "--config", "app-config.example.yaml", "--config", "app-config.example.production.yaml", "--config", "app-config.veecode.yaml"]
+
+# ---------------------------------------------------------------------------
+# VeeCode fork additions (M3 front 3) — append-only drift, manifested in
+# AGENTS.md.
+# Spec: devportal-planning docs/milestones/M3.md, "Front 3 — Pre-step as an
+# additive image file".
+# ---------------------------------------------------------------------------
+
+# M3 block 1 (Q7): stateless Postgres -> YAML pre-step, ported from
+# devportal-platform's ADR-014 regenerate-extensions-install.js. Staged in
+# the image but never invoked by any code path here — no ENTRYPOINT/CMD
+# reference to it above. Orchestration outside this repo chains it ahead of
+# the installer at the install-step:
+#   node regenerate-extensions-install.js --config <...> && \
+#     sh install-dynamic-plugins.sh <dynamic-plugins-root>
+COPY --chown=1001:1001 veecode/regenerate-extensions-install.js ./
+RUN chmod a=r ./regenerate-extensions-install.js
