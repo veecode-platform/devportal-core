@@ -378,23 +378,11 @@ COPY --chown=1001:0 veecode/app-config.veecode.yaml /opt/app-root/src/app-config
 # SEGMENT_TEST_MODE=false earlier in this stage; the last ENV wins.
 ENV SEGMENT_TEST_MODE=true
 
-# M2 block 4 (D6): build-generated plugin vitrine — DOCUMENTATION ONLY, never
-# consumed at runtime; regenerated from dynamic-plugins/dist/ on every build so
-# it can never drift from the image content.
-RUN { printf '%s\n' \
-      '# dynamic-plugins.default.yaml — plugin vitrine (build-generated, M2)' \
-      '#' \
-      '# DOCUMENTATION ONLY. This file is NOT consumed at runtime — it is not' \
-      '# part of the install chain and no baked config references it. It exists' \
-      '# so operators, contributors and agents can browse the dynamic plugins' \
-      '# pre-packaged in this image and copy entries into their own' \
-      '# dynamic-plugins.yaml (mounted over the baked one).' \
-      '#' \
-      '# Generated at image build time from ./dynamic-plugins/dist/ — always in' \
-      '# sync with the image content. Do not edit by hand.' \
-      'plugins:'; \
-      for d in ./dynamic-plugins/dist/*/; do printf '  - package: %s\n    disabled: true\n' "${d%/}"; done; \
-    } > /opt/app-root/src/dynamic-plugins.default.yaml
+# M2 block 4 (D6, reversed): the build-generated vitrine that lived here was
+# removed on 2026-08-10 — dynamic-plugins.default.yaml is a live reserved name
+# in the upstream installer contract (the includes: placeholder replaced via
+# CATALOG_INDEX_IMAGE); baking a file at that path shadows upstream behavior.
+# Browse pre-packaged plugins with: ls dynamic-plugins/dist/
 
 # M2 block 5 (D1): new ENTRYPOINT — a retyped copy of the upstream array above
 # plus one appended --config pair. Kept on a single physical line on purpose:

@@ -11,12 +11,15 @@
 #
 # To enable plugins: mount your own dynamic-plugins.yaml over this path
 # (read-only) — the same pattern the 2.x compose used. Browse the plugins
-# pre-packaged in this image in /opt/app-root/src/dynamic-plugins.default.yaml
-# (a build-generated, documentation-only vitrine).
+# pre-packaged in this image with: ls dynamic-plugins/dist/ (each directory
+# name is the exact "package:" path to use here, e.g.
+# ./dynamic-plugins/dist/backstage-community-plugin-tech-radar).
 #
-# Do NOT add "includes:" pointing at dynamic-plugins.default.yaml — in this
-# image that file is a documentation-only vitrine (D6), not a boot artifact.
-# Copy entries from it into this file instead.
+# Note on "includes: [dynamic-plugins.default.yaml]" (the upstream-documented
+# convention): that name is a placeholder the installer replaces when
+# CATALOG_INDEX_IMAGE is set. This image ships no file at that path and sets
+# no CATALOG_INDEX_IMAGE default, so without the env var the installer warns
+# and skips it — same as stock upstream.
 #
 # Do NOT use "preInstalled: true" — this image's vendorized Python installer
 # doesn't support that key.
