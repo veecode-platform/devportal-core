@@ -388,3 +388,20 @@ ENV SEGMENT_TEST_MODE=true
 # plus one appended --config pair. Kept on a single physical line on purpose:
 # the CI drift assertion reads one physical line. Do not reflow with "\".
 ENTRYPOINT ["node", "--require", "./instrumentation.js", "packages/backend", "--config", "app-config.yaml", "--config", "app-config.example.yaml", "--config", "app-config.example.production.yaml", "--config", "app-config.veecode.yaml"]
+
+# ---------------------------------------------------------------------------
+# VeeCode fork additions (M3 front 3) — append-only drift, manifested in
+# AGENTS.md.
+# Spec: devportal-planning docs/milestones/M3.md, "Front 3 — Pre-step as an
+# additive image file".
+# ---------------------------------------------------------------------------
+
+# M3 block 1 (Q7): stateless Postgres -> YAML pre-step, ported from
+# devportal-platform's ADR-014 regenerate-extensions-install.js. Staged in
+# the image but never invoked by any code path here — no ENTRYPOINT/CMD
+# reference to it above. Orchestration outside this repo chains it ahead of
+# the installer at the install-step:
+#   node regenerate-extensions-install.js --config <...> && \
+#     sh install-dynamic-plugins.sh <dynamic-plugins-root>
+COPY --chown=1001:1001 veecode/regenerate-extensions-install.js ./
+RUN chmod a=r ./regenerate-extensions-install.js
