@@ -392,8 +392,21 @@ ENTRYPOINT ["node", "--require", "./instrumentation.js", "packages/backend", "--
 # default; operators mount their own file over this path (same pattern as 2.x).
 COPY --chown=1001:0 veecode/dynamic-plugins.yaml /opt/app-root/src/dynamic-plugins.yaml
 
-# M2 block 2: guest -> admin auth mapping (production posture is an M6 DECIDE).
-COPY --chown=1001:0 veecode/app-config.veecode.yaml /opt/app-root/src/app-config.veecode.yaml
+# M2 block 2 (REMOVED at M4.6, 3.0.0-beta.1): the baked guest->admin auth
+# mapping (veecode/app-config.veecode.yaml) used to be COPY'd here and loaded
+# as a fourth --config by the retyped ENTRYPOINT below. Both are gone.
+#
+# Why: a container ENTRYPOINT is a fixed array, so an argument cannot be made
+# conditional without putting a shell wrapper in front of the process — which
+# is exactly the 2.x "smart entrypoint" this fork exists to reverse. Welded in
+# here, the guest provider had no off switch: chart-side extraAppConfig only
+# APPENDS config, it cannot remove a key the image already set. The fragment
+# now ships in the VeeCode default config (chart values / local runner), where
+# delivering it or not IS the lever.
+#
+# Consequence, accepted: this image alone has no login — as it already has no
+# plugins, no theme and no marketplace. It is not meant to run alone.
+# See devportal-planning: docs/adr/003 (amendment point 9), docs/milestones/M4.6.md.
 
 # M2 block 3: neutralize Red Hat's Segment telemetry. Upstream sets
 # SEGMENT_TEST_MODE=false earlier in this stage; the last ENV wins.
@@ -405,10 +418,16 @@ ENV SEGMENT_TEST_MODE=true
 # CATALOG_INDEX_IMAGE); baking a file at that path shadows upstream behavior.
 # Browse pre-packaged plugins with: ls dynamic-plugins/dist/
 
-# M2 block 5 (D1): new ENTRYPOINT — a retyped copy of the upstream array above
-# plus one appended --config pair. Kept on a single physical line on purpose:
-# the CI drift assertion reads one physical line. Do not reflow with "\".
-ENTRYPOINT ["node", "--require", "./instrumentation.js", "packages/backend", "--config", "app-config.yaml", "--config", "app-config.example.yaml", "--config", "app-config.example.production.yaml", "--config", "app-config.veecode.yaml"]
+# M2 block 5 (D1) — REMOVED at M4.6, 3.0.0-beta.1. It existed for exactly one
+# reason: to retype upstream's ENTRYPOINT array so a fourth --config pair could
+# be appended (block 2 above). With that fragment moved to the config layer,
+# the retyped copy has no purpose, so the fork stops overriding the ENTRYPOINT
+# at all and inherits upstream's array verbatim — one less line of drift, and
+# one less copy that can go stale.
+#
+# `entrypoint-drift.yaml` still runs: it now asserts the inverse — that this
+# fork does NOT override upstream's ENTRYPOINT — which catches both an upstream
+# change and a silent re-introduction of drift here.
 
 # ---------------------------------------------------------------------------
 # VeeCode fork additions (M3 front 3) — append-only drift, manifested in
