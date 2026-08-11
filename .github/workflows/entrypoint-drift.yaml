@@ -14,14 +14,19 @@
 #
 # M2 gate #5 — ENTRYPOINT drift assertion (additive, VeeCode fork only).
 #
-# The fork's Containerfile (branch veecode/main — the fork's product/
-# image-building branch as of M3.5) ends in a NEW ENTRYPOINT that is a
-# retyped COPY of upstream's array plus one appended
-# "--config app-config.veecode.yaml" pair. Because it is a copy, not a live
-# reference, upstream can change its own array (a new flag, a renamed config
-# file) and the copy goes stale silently. This workflow fails when that
-# happens: it compares the fork's array minus the last two elements against
-# the ENTRYPOINT in the live upstream/main Containerfile.
+# INVERTED AT M4.6 (3.0.0-beta.1). Until then the fork appended a fourth
+# "--config app-config.veecode.yaml" pair to a retyped copy of upstream's
+# array, and this workflow asserted "fork == upstream + that pair". That
+# fragment moved to the config layer (chart values / local runner), the
+# retyped ENTRYPOINT was deleted with it, and the fork now inherits upstream's
+# ENTRYPOINT verbatim.
+#
+# So the assertion is now the inverse: the ENTRYPOINT in the fork's
+# Containerfile (branch veecode/main) must be EXACTLY the one in the live
+# upstream/main Containerfile. That single check catches both directions —
+# upstream changing its array, and anyone re-introducing an ENTRYPOINT
+# override here without a decision. Re-adding drift is not forbidden; doing it
+# silently is.
 #
 # veecode/main is also this repo's default branch, so scheduled runs, the
 # push trigger, and workflow_dispatch all operate on the same branch — no
@@ -65,30 +70,28 @@ jobs:
           git remote add upstream https://github.com/redhat-developer/rhdh.git
           git fetch --depth=1 upstream main
 
-      - name: Assert ENTRYPOINT base slice matches upstream
+      - name: Assert the fork does not override upstream's ENTRYPOINT
         run: |
           set -euo pipefail
 
-          # FETCH_HEAD is the ref `git fetch upstream release-1.10` just wrote —
-          # not dependent on remote-tracking ref updates.
+          # FETCH_HEAD is the ref `git fetch upstream main` just wrote — not
+          # dependent on remote-tracking ref updates.
           UPSTREAM_ENTRYPOINT_SRC=$(git show FETCH_HEAD:build/containerfiles/Containerfile \
             | awk '/^ENTRYPOINT/{flag=1} flag{print} /\]/{if(flag)exit}')
-          # Verified 2026-08-07: upstream's ENTRYPOINT is a single line
-          # (Containerfile:362); if upstream later wraps it across lines, the
-          # awk above still covers it (it accumulates until it hits ']').
+          # Verified 2026-08-07: upstream's ENTRYPOINT is a single line; if
+          # upstream later wraps it across lines, the awk above still covers it
+          # (it accumulates until it hits ']').
           UPSTREAM_ARRAY=$(echo "$UPSTREAM_ENTRYPOINT_SRC" | sed -E 's/^ENTRYPOINT\s*//' | jq -c '.')
 
+          # The LAST ^ENTRYPOINT line is what actually applies in a build. Since
+          # M4.6 the fork appends none of its own, so this must be upstream's.
           FORK_ENTRYPOINT_SRC=$(grep '^ENTRYPOINT' build/containerfiles/Containerfile | tail -1)
           FORK_FULL=$(echo "$FORK_ENTRYPOINT_SRC" | sed -E 's/^ENTRYPOINT\s*//' | jq -c '.')
-          FORK_TAIL=$(echo "$FORK_FULL" | jq -c '.[-2:]')
-          [ "$FORK_TAIL" = '["--config","app-config.veecode.yaml"]' ] \
-            || { echo "::error::DRIFT: the fork's Containerfile does not end with exactly --config app-config.veecode.yaml"; exit 1; }
-          FORK_UPSTREAM_SLICE=$(echo "$FORK_FULL" | jq -c '.[0:-2]')
 
           # Do not sort either side: the order encodes config precedence and
           # the position of --require relative to packages/backend.
-          [ "$UPSTREAM_ARRAY" = "$FORK_UPSTREAM_SLICE" ] \
-            || { echo "::error::DRIFT: upstream/main's ENTRYPOINT no longer matches the base copied into the fork's Containerfile"; echo "upstream: $UPSTREAM_ARRAY"; echo "fork slice: $FORK_UPSTREAM_SLICE"; exit 1; }
+          [ "$UPSTREAM_ARRAY" = "$FORK_FULL" ] \
+            || { echo "::error::DRIFT: the fork's effective ENTRYPOINT differs from live upstream/main. Either upstream changed its array, or an ENTRYPOINT override was re-introduced in this fork. Both need a recorded decision (AGENTS.md + devportal-planning) before this gate is relaxed."; echo "upstream: $UPSTREAM_ARRAY"; echo "fork:     $FORK_FULL"; exit 1; }
 
-          echo "No drift: fork ENTRYPOINT = upstream array + [--config app-config.veecode.yaml]"
-          echo "upstream: $UPSTREAM_ARRAY"
+          echo "No drift: the fork inherits upstream's ENTRYPOINT verbatim (no VeeCode override since 3.0.0-beta.1)."
+          echo "entrypoint: $UPSTREAM_ARRAY"
