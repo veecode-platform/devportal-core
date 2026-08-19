@@ -408,6 +408,11 @@ COPY --chown=1001:0 veecode/dynamic-plugins.yaml /opt/app-root/src/dynamic-plugi
 # plugins, no theme and no marketplace. It is not meant to run alone.
 # See devportal-planning: docs/adr/003 (amendment point 9), docs/milestones/M4.6.md.
 
+# OD1 phase A: baked VeeCode product-face plugin list, referenced via the
+# chart's global.dynamic.includes so a customer's global.dynamic.plugins
+# override can no longer silently erase the face (see veecode/dynamic-plugins.veecode.yaml).
+COPY --chown=1001:0 veecode/dynamic-plugins.veecode.yaml /opt/app-root/src/dynamic-plugins.veecode.yaml
+
 # M2 block 3: neutralize Red Hat's Segment telemetry. Upstream sets
 # SEGMENT_TEST_MODE=false earlier in this stage; the last ENV wins.
 ENV SEGMENT_TEST_MODE=true
