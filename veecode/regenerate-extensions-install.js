@@ -641,4 +641,5 @@ module.exports = {
   rowsToPlugins,
   normalizePluginKey,
   loadFacePackageKeys,
+  rowPackageRef,
 };
