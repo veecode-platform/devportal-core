@@ -371,6 +371,11 @@ ENTRYPOINT ["node", "--require", "./instrumentation.js", "packages/backend", "--
 # default; operators mount their own file over this path (same pattern as 2.x).
 COPY --chown=1001:0 veecode/dynamic-plugins.yaml /opt/app-root/src/dynamic-plugins.yaml
 
+# OD1 phase A: baked VeeCode product-face plugin list, referenced via the
+# chart's global.dynamic.includes so a customer's global.dynamic.plugins
+# override can no longer silently erase the face (see veecode/dynamic-plugins.veecode.yaml).
+COPY --chown=1001:0 veecode/dynamic-plugins.veecode.yaml /opt/app-root/src/dynamic-plugins.veecode.yaml
+
 # M2 block 2: guest -> admin auth mapping (production posture is an M6 DECIDE).
 COPY --chown=1001:0 veecode/app-config.veecode.yaml /opt/app-root/src/app-config.veecode.yaml
 

@@ -1468,6 +1468,11 @@ def main():
         print('\n======= Including dynamic plugins from', include, flush=True)
 
         if not os.path.isfile(include):
+            # OD1 phase A: the VeeCode product face ships baked into the image and is
+            # wired in exclusively through this include — a missing file here means the
+            # image boots faceless. Fail closed instead of the generic warn+skip.
+            if os.path.basename(include) == 'dynamic-plugins.veecode.yaml':
+                raise InstallException(f"Product face file {include} is missing from the image; refusing to boot faceless")
             print(f"WARNING: File {include} does not exist, skipping including dynamic packages from {include}", flush=True)
             continue
 
