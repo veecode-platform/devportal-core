@@ -1488,6 +1488,22 @@ def main():
 
         include_plugin_lists.append((include, include_plugins))
 
+    # OD1 phase A backstop: the face file above only catches a *listed* path that
+    # doesn't resolve. This catches the opposite drift — the baked face file is
+    # sitting right there on disk (shipped by the image) but no include entry
+    # points at it, e.g. a chart/values edit dropped or mistyped the line. Compare
+    # on the resolved absolute path so a relative include (resolved against this
+    # process's CWD, same as the isfile() check above) still matches.
+    face_file_path = os.path.join(os.getcwd(), 'dynamic-plugins.veecode.yaml')
+    if os.path.isfile(face_file_path):
+        resolved_includes = {os.path.abspath(os.path.join(os.getcwd(), i)) for i in includes if isinstance(i, str)}
+        if os.path.abspath(face_file_path) not in resolved_includes:
+            raise InstallException(
+                f"Product face file {face_file_path} exists in the image but is not listed in 'includes'; "
+                f"refusing to boot faceless. Add this line to the 'includes' list in {dynamic_plugins_file}: "
+                f"  - /opt/app-root/src/dynamic-plugins.veecode.yaml"
+            )
+
     if 'plugins' in content:
         plugins = content['plugins']
     else:

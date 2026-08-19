@@ -1,16 +1,22 @@
-# /opt/app-root/src/dynamic-plugins.yaml — baked default, additive (M2 revision 3.1)
+# /opt/app-root/src/dynamic-plugins.yaml — baked default, additive (OD1 phase A)
 #
 # Fixed file name, read from the CWD by the vendorized Python installer — no
 # override via env var (install-dynamic-plugins.py:1411). The 2.x image
 # always shipped an equivalent baked file; the operator never had to create
 # it from scratch (D3).
 #
-# Minimal content by conscious decision: zero active plugins by default. The
-# VeeCode "chrome" set lands in M4 through the same mechanism — overridden by
-# a bind mount, never edited here at runtime.
+# `plugins:` stays empty by conscious decision — this file is the no-chart
+# boot path (plain `docker run`, no Helm), and it is superseded entirely by
+# the chart-rendered ConfigMap under Helm. The `includes:` entry below wires
+# in the VeeCode product face (Home, header, TechDocs, Notifications, Tech
+# Radar, Marketplace, theme — veecode/dynamic-plugins.veecode.yaml) so a
+# plain `docker run` of this image still boots WITH the face, not faceless,
+# and satisfies the installer's fail-closed/backstop checks
+# (install-dynamic-plugins.py) even on the no-chart path.
 #
-# To enable plugins: mount your own dynamic-plugins.yaml over this path
-# (read-only) — the same pattern the 2.x compose used. Browse the plugins
+# To add your own plugins: mount your own dynamic-plugins.yaml over this path
+# (read-only) — the same pattern the 2.x compose used, or append to
+# `plugins:` if you're maintaining a derived image. Browse the plugins
 # pre-packaged in this image with: ls dynamic-plugins/dist/ (each directory
 # name is the exact "package:" path to use here, e.g.
 # ./dynamic-plugins/dist/backstage-community-plugin-tech-radar).
@@ -19,8 +25,11 @@
 # convention): that name is a placeholder the installer replaces when
 # CATALOG_INDEX_IMAGE is set. This image ships no file at that path and sets
 # no CATALOG_INDEX_IMAGE default, so without the env var the installer warns
-# and skips it — same as stock upstream.
+# and skips it — same as stock upstream. dynamic-plugins.veecode.yaml is a
+# distinct, non-reserved name and is not affected by that substitution.
 #
 # Do NOT use "preInstalled: true" — this image's vendorized Python installer
 # doesn't support that key.
+includes:
+  - dynamic-plugins.veecode.yaml
 plugins: []

@@ -7,7 +7,7 @@
 # devportal-core image at /opt/app-root/src/dynamic-plugins.veecode.yaml and
 # wired in via the chart's `global.dynamic.includes` (level 0), ahead of the
 # marketplace write-through include. It replaces the copy that used to live
-# in `wt-m5-chart/charts/backstage/values.yaml` under `global.dynamic.plugins`
+# in `devportal-chart/charts/backstage/values.yaml` under `global.dynamic.plugins`
 # — a Helm LIST that a customer setting the same key would silently REPLACE,
 # erasing the whole face. Moving it here makes the face non-destructible by
 # a customer values overlay.
