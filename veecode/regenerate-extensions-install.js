@@ -369,6 +369,27 @@ function normalizePluginKey(ref) {
   return at > 0 ? ref.slice(0, at) : ref;
 }
 
+// Best-effort key for a not-yet-transformed DB row: what package this row would
+// resolve to, without paying for digest resolution. Mirrors rowsToPlugins'
+// precedence (config_yaml's own `package:` wins, else the row's package_name)
+// but stays pre-digest — this only needs to answer "is this the face's package",
+// which normalizePluginKey settles regardless of which version is pinned.
+function rowPackageRef(row) {
+  const raw = row.config_yaml != null ? String(row.config_yaml).trim() : '';
+  if (raw) {
+    try {
+      const parsed = YAML.parse(raw);
+      if (parsed && typeof parsed === 'object' && typeof parsed.package === 'string') {
+        return parsed.package;
+      }
+    } catch {
+      // Malformed config_yaml: fall through to package_name, same as
+      // rowsToPlugins does for the same row later.
+    }
+  }
+  return row.requested_ref || row.package_name;
+}
+
 // Reads the baked product face file so the regen can exclude any package it already
 // declares. Missing/unreadable/unparseable is NOT fatal here — this script must keep
 // working in local/dev contexts that never bake a face file. The hard guarantee
@@ -496,6 +517,33 @@ async function main() {
     `pluginDivisionMode=${mode} — read "${schema}".${TABLE} in ${where} (${rows.length} row(s))`,
   );
 
+  // OD1 phase A: exclude face-owned rows BEFORE the digest-resolution loop below,
+  // not after. An unresolvable ref for a package the face already declares must
+  // never bail() out of the whole regen (see the digest loop's "refusing to
+  // materialise a bare tag" abort) — it is being dropped anyway, so it should
+  // never reach that loop in the first place. See rowPackageRef() /
+  // loadFacePackageKeys() / normalizePluginKey() above.
+  const facePackageKeys = loadFacePackageKeys();
+  if (facePackageKeys) {
+    const beforeCount = rows.length;
+    rows = rows.filter(row => {
+      const isFacePackage = facePackageKeys.has(normalizePluginKey(rowPackageRef(row)));
+      if (isFacePackage) {
+        log(
+          `excluding "${row.package_name}" from ${outFile}: declared in product face file`,
+        );
+      }
+      return !isFacePackage;
+    });
+    if (rows.length !== beforeCount) {
+      log(
+        `dedup against the product face file removed ${
+          beforeCount - rows.length
+        } selection(s)`,
+      );
+    }
+  }
+
   // ── T1.3: pin every OCI selection to a digest ─────────────────────────────
   //
   // A restart must reinstall the SAME bytes, so the YAML never carries a bare
@@ -551,32 +599,9 @@ async function main() {
     } non-OCI)`,
   );
 
-  let plugins = rowsToPlugins(rows, effectiveRefs);
-
-  // OD1 phase A: never re-declare a package the baked face file already owns — see
-  // loadFacePackageKeys() / normalizePluginKey() above.
-  const facePackageKeys = loadFacePackageKeys();
-  if (facePackageKeys) {
-    const beforeCount = plugins.length;
-    plugins = plugins.filter(p => {
-      const isFacePackage =
-        p && typeof p.package === 'string' &&
-        facePackageKeys.has(normalizePluginKey(p.package));
-      if (isFacePackage) {
-        log(
-          `excluding "${p.package}" from ${outFile}: declared in product face file`,
-        );
-      }
-      return !isFacePackage;
-    });
-    if (plugins.length !== beforeCount) {
-      log(
-        `dedup against the product face file removed ${
-          beforeCount - plugins.length
-        } selection(s)`,
-      );
-    }
-  }
+  // Face-owned rows were already excluded above, before digest resolution —
+  // rowsToPlugins never sees them.
+  const plugins = rowsToPlugins(rows, effectiveRefs);
 
   try {
     // 2.x's entrypoint guarantees DEVPORTAL_DB_PATH exists before this script
