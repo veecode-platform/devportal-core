@@ -1468,6 +1468,11 @@ def main():
         print('\n======= Including dynamic plugins from', include, flush=True)
 
         if not os.path.isfile(include):
+            # OD1 phase A: the VeeCode product face ships baked into the image and is
+            # wired in exclusively through this include — a missing file here means the
+            # image boots faceless. Fail closed instead of the generic warn+skip.
+            if os.path.basename(include) == 'dynamic-plugins.veecode.yaml':
+                raise InstallException(f"Product face file {include} is missing from the image; refusing to boot faceless")
             print(f"WARNING: File {include} does not exist, skipping including dynamic packages from {include}", flush=True)
             continue
 
@@ -1482,6 +1487,22 @@ def main():
             raise InstallException(f"content of the \'plugins\' field must be a list in {include}")
 
         include_plugin_lists.append((include, include_plugins))
+
+    # OD1 phase A backstop: the face file above only catches a *listed* path that
+    # doesn't resolve. This catches the opposite drift — the baked face file is
+    # sitting right there on disk (shipped by the image) but no include entry
+    # points at it, e.g. a chart/values edit dropped or mistyped the line. Compare
+    # on the resolved absolute path so a relative include (resolved against this
+    # process's CWD, same as the isfile() check above) still matches.
+    face_file_path = os.path.join(os.getcwd(), 'dynamic-plugins.veecode.yaml')
+    if os.path.isfile(face_file_path):
+        resolved_includes = {os.path.abspath(os.path.join(os.getcwd(), i)) for i in includes if isinstance(i, str)}
+        if os.path.abspath(face_file_path) not in resolved_includes:
+            raise InstallException(
+                f"Product face file {face_file_path} exists in the image but is not listed in 'includes'; "
+                f"refusing to boot faceless. Add this line to the 'includes' list in {dynamic_plugins_file}: "
+                f"  - /opt/app-root/src/dynamic-plugins.veecode.yaml"
+            )
 
     if 'plugins' in content:
         plugins = content['plugins']

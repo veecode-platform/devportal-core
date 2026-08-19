@@ -72,6 +72,13 @@ const PLUGIN_ID = 'extensions';
 const DEFAULT_PREFIX = 'backstage_plugin_';
 const TABLE = 'marketplace_installations';
 
+// OD1 phase A: the baked VeeCode product-face file, wired into the chart's
+// global.dynamic.includes ahead of this script's output file. Both land at
+// includes level 0, so a package this regen re-emits that the face already
+// declares is a FATAL same-level collision for the installer
+// (install-dynamic-plugins.py:333-334) — see loadFacePackageKeys().
+const DEFAULT_FACE_FILE = '/opt/app-root/src/dynamic-plugins.veecode.yaml';
+
 // Bounded timeouts so an unreachable/slow DB DEGRADES (empty/unchanged file)
 // instead of hanging the boot. Without connectionTimeoutMillis, pg.connect()
 // waits on the OS TCP timeout — the "DB unreachable → degrade" fail-safe relies
@@ -333,6 +340,91 @@ function rowsToPlugins(rows, effectiveRefs = new Map()) {
   return plugins;
 }
 
+// Normalizes a package ref to a collision key comparable across sources that pin
+// versions differently — the face file carries a tag or digest, this script always
+// digest-pins (refWithDigest above), so raw-string comparison would never match a
+// face entry against its regenerated counterpart. Mirrors the installer's
+// parse_plugin_key version-stripping (install-dynamic-plugins.py:503-565 for OCI,
+// :409-460 for npm) closely enough for dedup purposes: OCI compares on the
+// registry/image path plus the `!<plugin-path>` selector with the tag/digest
+// stripped; npm-style refs compare with any trailing `@<version>` stripped; local
+// `./` paths compare as-is (there is nothing to strip).
+function normalizePluginKey(ref) {
+  if (typeof ref !== 'string') return ref;
+  if (ref.startsWith('./')) return ref;
+  const oci = splitOciRef(ref);
+  if (oci) {
+    // Strip the digest (after '@') first, then strip the tag only if the last ':'
+    // comes after the last '/' — a port in the registry host (host:5000/...) also
+    // contains a ':' before the first '/', and must NOT be mistaken for a tag
+    // separator (the installer's own EXPECTED_OCI_PATTERN explicitly allows a
+    // port in the registry).
+    const noDigest = oci.image.replace(/^oci:\/\//, '').split('@')[0];
+    const lastColon = noDigest.lastIndexOf(':');
+    const lastSlash = noDigest.lastIndexOf('/');
+    const registry = lastColon > lastSlash ? noDigest.slice(0, lastColon) : noDigest;
+    return `oci://${registry}!${oci.selector}`;
+  }
+  const at = ref.lastIndexOf('@');
+  return at > 0 ? ref.slice(0, at) : ref;
+}
+
+// Best-effort key for a not-yet-transformed DB row: what package this row would
+// resolve to, without paying for digest resolution. Mirrors rowsToPlugins'
+// precedence (config_yaml's own `package:` wins, else the row's package_name)
+// but stays pre-digest — this only needs to answer "is this the face's package",
+// which normalizePluginKey settles regardless of which version is pinned.
+function rowPackageRef(row) {
+  const raw = row.config_yaml != null ? String(row.config_yaml).trim() : '';
+  if (raw) {
+    try {
+      const parsed = YAML.parse(raw);
+      if (parsed && typeof parsed === 'object' && typeof parsed.package === 'string') {
+        return parsed.package;
+      }
+    } catch {
+      // Malformed config_yaml: fall through to package_name, same as
+      // rowsToPlugins does for the same row later.
+    }
+  }
+  return row.requested_ref || row.package_name;
+}
+
+// Reads the baked product face file so the regen can exclude any package it already
+// declares. Missing/unreadable/unparseable is NOT fatal here — this script must keep
+// working in local/dev contexts that never bake a face file. The hard guarantee
+// against a same-level-0 collision lives installer-side (the fail-closed include on
+// a missing face file, plus its own fatal-duplicate check); this is best-effort
+// dedup, not the safety net.
+function loadFacePackageKeys() {
+  const faceFile = process.env.DEVPORTAL_FACE_FILE || DEFAULT_FACE_FILE;
+  let raw;
+  try {
+    raw = fs.readFileSync(faceFile, 'utf8');
+  } catch (e) {
+    warn(
+      `could not read face file ${faceFile} (${e.message}); marketplace regen dedup disabled for this boot`,
+    );
+    return null;
+  }
+  let parsed;
+  try {
+    parsed = YAML.parse(raw);
+  } catch (e) {
+    warn(
+      `face file ${faceFile} is not valid YAML (${e.message}); marketplace regen dedup disabled for this boot`,
+    );
+    return null;
+  }
+  const facePlugins =
+    parsed && Array.isArray(parsed.plugins) ? parsed.plugins : [];
+  const keys = new Set();
+  for (const p of facePlugins) {
+    if (p && typeof p.package === 'string') keys.add(normalizePluginKey(p.package));
+  }
+  return keys;
+}
+
 function writeAtomic(filePath, contents) {
   const tmp = path.join(
     path.dirname(filePath),
@@ -425,6 +517,33 @@ async function main() {
     `pluginDivisionMode=${mode} — read "${schema}".${TABLE} in ${where} (${rows.length} row(s))`,
   );
 
+  // OD1 phase A: exclude face-owned rows BEFORE the digest-resolution loop below,
+  // not after. An unresolvable ref for a package the face already declares must
+  // never bail() out of the whole regen (see the digest loop's "refusing to
+  // materialise a bare tag" abort) — it is being dropped anyway, so it should
+  // never reach that loop in the first place. See rowPackageRef() /
+  // loadFacePackageKeys() / normalizePluginKey() above.
+  const facePackageKeys = loadFacePackageKeys();
+  if (facePackageKeys) {
+    const beforeCount = rows.length;
+    rows = rows.filter(row => {
+      const isFacePackage = facePackageKeys.has(normalizePluginKey(rowPackageRef(row)));
+      if (isFacePackage) {
+        log(
+          `excluding "${row.package_name}" from ${outFile}: declared in product face file`,
+        );
+      }
+      return !isFacePackage;
+    });
+    if (rows.length !== beforeCount) {
+      log(
+        `dedup against the product face file removed ${
+          beforeCount - rows.length
+        } selection(s)`,
+      );
+    }
+  }
+
   // ── T1.3: pin every OCI selection to a digest ─────────────────────────────
   //
   // A restart must reinstall the SAME bytes, so the YAML never carries a bare
@@ -480,7 +599,10 @@ async function main() {
     } non-OCI)`,
   );
 
+  // Face-owned rows were already excluded above, before digest resolution —
+  // rowsToPlugins never sees them.
   const plugins = rowsToPlugins(rows, effectiveRefs);
+
   try {
     // 2.x's entrypoint guarantees DEVPORTAL_DB_PATH exists before this script
     // runs; this fork has no such entrypoint, so create it here. Best-effort
@@ -513,4 +635,11 @@ if (require.main === module) {
 }
 
 // Exported for unit tests (the pure transforms have no I/O).
-module.exports = { parseConfigTargets, pgClientConfig, rowsToPlugins };
+module.exports = {
+  parseConfigTargets,
+  pgClientConfig,
+  rowsToPlugins,
+  normalizePluginKey,
+  loadFacePackageKeys,
+  rowPackageRef,
+};

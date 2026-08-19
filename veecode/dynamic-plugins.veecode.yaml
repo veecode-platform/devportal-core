@@ -1,0 +1,497 @@
+# VeeCode product face — canonical version source (OD1 phase A).
+#
+# This file is the VeeCode product face: the 20-plugin set (Home, Header,
+# RBAC UI, Theme, About, Marketplace/Extensions, TechDocs, Notifications,
+# Signals, Tech Radar) that makes a stock devportal-core boot look and act
+# like VeeCode DevPortal instead of a bare RHDH shell. It is baked into the
+# devportal-core image at /opt/app-root/src/dynamic-plugins.veecode.yaml and
+# wired in via the chart's `global.dynamic.includes` (level 0), ahead of the
+# marketplace write-through include. It replaces the copy that used to live
+# in `devportal-chart/charts/backstage/values.yaml` under `global.dynamic.plugins`
+# — a Helm LIST that a customer setting the same key would silently REPLACE,
+# erasing the whole face. Moving it here makes the face non-destructible by
+# a customer values overlay.
+#
+# This file is read by the installer with `yaml.safe_load` (NOT Helm
+# `tpl`-rendered) — every ref below is LITERAL. Do not add `{{ ... }}`
+# template syntax here; it will not be expanded and will be passed through
+# as a literal string.
+#
+# Refs are pinned by DIGEST where OCI (this file IS the canonical version
+# source for VeeCode's own plugins — homepage/theme/marketplace — since no
+# upstream CATALOG_INDEX_IMAGE covers them), or by exact npm version, or by
+# `./dynamic-plugins/dist/...` local path (resolved from the installer's
+# CWD, `/opt/app-root/src`, which is this image's own unpack directory).
+#
+# Customer override model (installer level 1 overrides level 0 per-package,
+# `install-dynamic-plugins.py:643-658`):
+#   - To disable ONE face plugin without restating the rest, add to your
+#     values overlay under `global.dynamic.plugins`:
+#       - package: <the exact ref below for that plugin>
+#         disabled: true
+#   - EDGE CASE: if your override ALSO sets `pluginConfig` for that package,
+#     the override's `pluginConfig` REPLACES this file's `pluginConfig`
+#     wholesale (installer does a dict.update, not a deep-merge) — you lose
+#     every key you didn't restate, not just the ones you meant to change.
+#     Prefer `disabled: true` alone; if you must reconfigure a face plugin,
+#     copy this file's whole `pluginConfig` block for that package and edit
+#     only what you need.
+plugins:
+# ── Home ────────────────────────────────────────────────────────────
+# Q1 RESOLVED (2026-08-14): the VeeCode analytics home is the 3.x
+# default. This entry must stay DISABLED, and re-enabling it is dead
+# for TWO independent reasons, both verified in source:
+# 1. visitsApiRef collision is FATAL — two plugin factories for the
+#    same ref make AppManager THROW at boot (not "first wins";
+#    ApiFactoryRegistry rejects equal-priority registration and
+#    AppManager raises). The VeeCode home registers its own factory.
+# 2. This plugin's VisitListener is gated on home.page/cards entries
+#    (RecentlyVisitedCard/TopVisitedCard displayNames) the VeeCode
+#    home never registers — it would be a no-op anyway. The recorder
+#    is provided by the veecode-homepage plugin itself (below).
+# Kept in full (disabled) as the one-line revert.
+- package: ./dynamic-plugins/dist/red-hat-developer-hub-backstage-plugin-dynamic-home-page
+  disabled: true
+  pluginConfig:
+    dynamicPlugins:
+      frontend:
+        red-hat-developer-hub.backstage-plugin-dynamic-home-page:
+          translationResources:
+            - importName: homepageTranslations
+              ref: homepageTranslationRef
+              module: Alpha
+          dynamicRoutes:
+            - path: /
+              importName: DynamicHomePage
+          mountPoints:
+            - mountPoint: application/listener
+              importName: VisitListener
+            - mountPoint: home.page/cards
+              importName: SearchBar
+              config:
+                layouts:
+                  xl: { w: 10, h: 1, x: 1 }
+                  lg: { w: 10, h: 1, x: 1 }
+                  md: { w: 10, h: 1, x: 1 }
+                  sm: { w: 10, h: 1, x: 1 }
+                  xs: { w: 12, h: 1 }
+                  xxs: { w: 12, h: 1 }
+            - mountPoint: home.page/cards
+              importName: QuickAccessCard
+              config:
+                layouts:
+                  xl: { w: 7, h: 8 }
+                  lg: { w: 7, h: 8 }
+                  md: { w: 7, h: 8 }
+                  sm: { w: 12, h: 8 }
+                  xs: { w: 12, h: 8 }
+                  xxs: { w: 12, h: 8 }
+            - mountPoint: home.page/cards
+              importName: CatalogStarredEntitiesCard
+              config:
+                layouts:
+                  xl: { w: 5, h: 4, x: 7 }
+                  lg: { w: 5, h: 4, x: 7 }
+                  md: { w: 5, h: 4, x: 7 }
+                  sm: { w: 12, h: 4 }
+                  xs: { w: 12, h: 4 }
+                  xxs: { w: 12, h: 4 }
+
+# VeeCode analytics home (greeting + highlighted card + stat cards +
+# summary + visited charts) — the 2.x default. Delivered from the
+# export-overlays OCI pipeline (workspaces/veecode-homepage pinning
+# devportal-plugins@08980aa1), the same channel as veecode-theme —
+# devportal-plugins is source-only, its npm publish path is retired.
+# The bundle carries the VisitListener export and the config.d.ts and
+# useVisited(orderBy) fixes, built for this 1.52 shell (scoped publish
+# branch homepage/bs-1.52.0, supported-versions 1.52.0). If the route
+# 404s or mounts blank, check the browser console for
+# scalprum/shared-scope errors FIRST.
+# Pinned by DIGEST (the installer's documented integrity mechanism,
+# docs/dynamic-plugins/installing-plugins.md:142) — bs_* tags are
+# mutable in the overlays fleet (retag promotion). Digest below is
+# tag bs_1.52.0 at publish time; bumping = new digest here.
+- package: oci://quay.io/veecode/veecode-homepage@sha256:13f6f2f61575d8523e90f2256e5711e5141670ae7ed717229524f3f23bc6d99a!veecode-platform-plugin-veecode-homepage
+  disabled: false
+  pluginConfig:
+    dynamicPlugins:
+      frontend:
+        veecode-platform.plugin-veecode-homepage:
+          translationResources:
+            - importName: homepageTranslations
+              ref: homepageTranslationRef
+          dynamicRoutes:
+            - path: /
+              importName: VeecodeHomepagePage
+              config:
+                props:
+                  width: 1500
+                  height: 800
+          # Visit recorder — completes the recorder/storage/readers trio
+          # this plugin owns. The v3 shell mounts no VisitListener of its
+          # own (2.x mounted it statically in AppBase); it only consumes
+          # the application/listener mount point, so without this entry
+          # visitsApi.save() is never called and the "Recently/Top
+          # visited" cards stay empty. Note the loader ignores
+          # config.props/config.if on this mount point, and a missing
+          # export fails SILENTLY (console warning only).
+          mountPoints:
+            - mountPoint: application/listener
+              importName: VisitListener
+
+# ── Header (rich default; owns default.admin sidebar group) ───────────
+- package: ./dynamic-plugins/dist/red-hat-developer-hub-backstage-plugin-global-header
+  disabled: false
+  pluginConfig:
+    dynamicPlugins:
+      frontend:
+        default.main-menu-items:
+          menuItems:
+            default.admin:
+              title: Administration
+              textKey: menuItem.administration
+              icon: admin
+            # Learning Paths is an upstream RHDH default menu item, never
+            # shipped by VeeCode 2.x — remove it from the default sidebar
+            # (M4.7 decision-round ruling 1). Slug verified against the
+            # running 3.0.0-beta.1 image bundle: default.learning-path.
+            default.learning-path:
+              enabled: false
+            # Sidebar order (M4.7). priority sorts DESC (higher = top).
+            # These deep-merge with the built-in DefaultMainMenuItems
+            # (packages/app/src/consts.ts), overriding ONLY priority and
+            # keeping each item's title/icon/route. Target order:
+            # Home > Catalog > APIs > Docs > Self-service > Notifications
+            # > Tech Radar > Marketplace. The dynamic-plugin items carry
+            # their priority in their own menuItems block (near each
+            # plugin below) because the inline dynamicRoute menuItem form
+            # DROPS priority (extractDynamicConfigFrontend.ts:96-104).
+            default.home:
+              priority: 100
+            default.catalog:
+              priority: 96
+            default.apis:
+              priority: 92
+            # Docs promoted into the CORE group (name starts with
+            # `default.`) so it sits between APIs and Self-service — the
+            # order Gio asked for, which crosses the core/plugin divider a
+            # plugin-named item cannot. Full definition (title/icon/to),
+            # not just priority: there is no built-in default.docs to
+            # deep-merge with. `to: docs` targets the /docs route
+            # registered by the techdocs dynamicRoute above; `icon: docs`
+            # resolves via the techdocs appIcon (getSystemIcon).
+            default.docs:
+              title: Docs
+              icon: docs
+              to: docs
+              priority: 88
+            default.create:
+              priority: 84
+        red-hat-developer-hub.backstage-plugin-global-header:
+          translationResources:
+            - importName: globalHeaderTranslations
+              ref: globalHeaderTranslationRef
+          mountPoints:
+            - mountPoint: application/header
+              importName: GlobalHeader
+              config:
+                # GAP-008/reverse-gap (M4.7): above-sidebar makes the header
+                # span the FULL width (over the sidebar), which is what
+                # created the full-width header + the stacked/duplicated logo.
+                # All three 2.x configs use above-main-content — the header
+                # sits to the RIGHT of the sidebar, logo lives in the sidebar
+                # only. Match 2.x.
+                position: above-main-content
+            # GAP-008 (M4.7): the sidebar already renders app.branding.fullLogo
+            # unconditionally, so mounting CompanyLogo here too produced the
+            # duplicated/stacked wordmark. All three 2.x configs are
+            # sidebar-only (no header logo) — so this mount is removed.
+            - mountPoint: global.header/component
+              importName: SearchComponent
+              config:
+                priority: 100
+            - mountPoint: global.header/component
+              importName: Spacer
+              config:
+                priority: 99
+                props:
+                  growFactor: 0
+            - mountPoint: global.header/component
+              importName: HeaderIconButton
+              config:
+                priority: 90
+                props:
+                  title: Self-service
+                  titleKey: create.title
+                  icon: add
+                  to: create
+            - mountPoint: global.header/component
+              importName: StarredDropdown
+              config:
+                priority: 85
+            - mountPoint: global.header/component
+              importName: ApplicationLauncherDropdown
+              config:
+                priority: 82
+            - mountPoint: global.header/component
+              importName: HelpDropdown
+              config:
+                priority: 80
+            - mountPoint: global.header/help
+              importName: SupportButton
+              config:
+                priority: 10
+            - mountPoint: global.header/component
+              importName: NotificationButton
+              config:
+                priority: 70
+            - mountPoint: global.header/component
+              importName: Divider
+              config:
+                priority: 50
+            - mountPoint: global.header/component
+              importName: ProfileDropdown
+              config:
+                priority: 10
+            - mountPoint: global.header/profile
+              importName: MenuItemLink
+              config:
+                priority: 100
+                props:
+                  title: Settings
+                  titleKey: profile.settings
+                  link: /settings
+                  icon: manageAccounts
+            - mountPoint: global.header/profile
+              importName: MenuItemLink
+              config:
+                priority: 90
+                props:
+                  title: My profile
+                  titleKey: profile.myProfile
+                  type: myProfile
+                  icon: account
+            - mountPoint: global.header/profile
+              importName: LogoutButton
+              config:
+                priority: 10
+
+# ── RBAC (frontend UI only; /rbac under Administration; enforcement OFF) ─
+- package: ./dynamic-plugins/dist/backstage-community-plugin-rbac
+  disabled: false
+  pluginConfig:
+    dynamicPlugins:
+      frontend:
+        backstage-community.plugin-rbac:
+          appIcons:
+            - name: rbacIcon
+              importName: RbacIcon
+          dynamicRoutes:
+            - path: /rbac
+              importName: RbacPage
+              menuItem:
+                icon: rbacIcon
+                text: RBAC
+          menuItems:
+            rbac:
+              parent: default.admin
+              icon: rbacIcon
+
+# ── Theme ─────────────────────────────────────────────────────────────
+# M4.7 ROOT fix: the OCI veecode-theme was the OLD @backstage/theme
+# createUnifiedTheme form and did NOT implement RHDH's palette.rhdh.general.*
+# contract that the 3.x shell requires — the cause of the sidebar<->content
+# gap, the Administration-expand shift, and the full-height green loader.
+# Replaced by RHDH-native theming configured via app-config
+# (files/veecode/app-config.veecode-product.yaml, app.branding.theme.*,
+# variant: rhdh). Disabled (not deleted) as a one-line revert.
+- package: oci://quay.io/veecode/veecode-theme@sha256:053c593f04adc2d35dd45adad4411458b6ccd85735961fe862126c7cc2677d90!veecode-platform-plugin-veecode-theme # was :bs_1.49.4
+  disabled: true
+  pluginConfig:
+    dynamicPlugins:
+      frontend:
+        veecode-platform.plugin-veecode-theme:
+          themes:
+            - id: light
+              title: VeeCode Light
+              variant: light
+              importName: VeecodeLightThemeProvider
+            - id: dark
+              title: VeeCode Dark
+              variant: dark
+              importName: VeecodeDarkThemeProvider
+
+# ── About (npm spec; /about under Administration) ─────────────────────
+- package: "@veecode-platform/backstage-plugin-about-dynamic@1.1.0"
+  integrity: "sha512-t39lBHEqNQ1B3enyYAvkUtGaEGx1Hxox3p4Vw7ZDcnmXzydG1vsO/rc1Ny0ra4TMhbkN84ECcQGpTwO5wUILMg=="
+  disabled: false
+  pluginConfig:
+    dynamicPlugins:
+      frontend:
+        veecode-platform.backstage-plugin-about:
+          appIcons:
+            - name: aboutIcon
+              importName: AboutIcon
+          dynamicRoutes:
+            - path: /about
+              importName: AboutPage
+              menuItem:
+                icon: aboutIcon
+                text: About
+                enabled: true
+          menuItems:
+            about:
+              parent: default.admin
+              title: About
+              icon: aboutIcon
+
+# ── About backend (npm spec; no pluginConfig) ─────────────────────────
+- package: "@veecode-platform/backstage-plugin-about-backend-dynamic@1.1.0"
+  integrity: "sha512-LBAbJd/c9UbAh61jToFPXBe3s10Fj01a2pu7SnU3tO5qqxFCmQs6UuEREXERPSmRNdwFuBdggfruDVIrdevI0Q=="
+  disabled: false
+
+# ── Marketplace / Extensions (M3 loop) ────────────────────────────────
+# Catalog provider that ingests the extracted index entities.
+- package: ./dynamic-plugins/dist/red-hat-developer-hub-backstage-plugin-catalog-backend-module-extensions-dynamic
+  disabled: false
+# VeeCode marketplace backend (byte-identical across tags; owns /api/extensions/*).
+- package: oci://quay.io/veecode/marketplace@sha256:d98b28a1f8a453fe697bbc50780ae92e0c54eb7f3c789b0d184728d5b3c07a9e!devportal-marketplace-backend # was :bs_1.53.0
+  disabled: false
+# Pending-changes (header button for the batch install/removal UX).
+- package: oci://quay.io/veecode/marketplace@sha256:d98b28a1f8a453fe697bbc50780ae92e0c54eb7f3c789b0d184728d5b3c07a9e!devportal-pending-changes-dynamic # was :bs_1.53.0
+  disabled: false
+  pluginConfig:
+    dynamicPlugins:
+      frontend:
+        devportal.pending-changes:
+          mountPoints:
+            - mountPoint: global.header/component
+              importName: PendingChangesButton
+              config:
+                priority: 55
+                props:
+                  pollingIntervalMs: 30000
+# VeeCode marketplace frontend at /marketplace (bs_1.49.4 — the FE selector
+# genuinely differs by Backstage version, unlike the backend).
+- package: oci://quay.io/veecode/marketplace@sha256:e30f090acb9b4d613f94ea11abc2cb0501c306be7c0bc7b83774e4ae62fbc3f0!devportal-marketplace-frontend-dynamic # was :bs_1.49.4
+  disabled: false
+  pluginConfig:
+    dynamicPlugins:
+      frontend:
+        devportal.marketplace-frontend:
+          appIcons:
+            - name: pluginsIcon
+              importName: PluginsIcon
+          dynamicRoutes:
+            - path: /marketplace
+              importName: DynamicExtensionsPluginRouter
+              menuItem:
+                icon: pluginsIcon
+                text: Marketplace
+          menuItems:
+            marketplace:
+              title: Marketplace
+              icon: pluginsIcon
+              priority: 72
+
+# ══ 0.1.1 — VeeCode 2.x default face, delivered via chart (M4.7) ═══════
+# Package refs verified against the running 3.0.0-beta.1 image's
+# /opt/app-root/src/dynamic-plugins/dist/ directory.
+# ── Docs / TechDocs (GAP-001; RHDH default frontend config — registers
+#    the /docs route + the sidebar "Docs" item + the entity docs tab) ───
+- package: ./dynamic-plugins/dist/backstage-plugin-techdocs
+  disabled: false
+  pluginConfig:
+    dynamicPlugins:
+      frontend:
+        backstage.plugin-techdocs:
+          appIcons:
+            - name: docs
+              importName: LibraryBooks
+          dynamicRoutes:
+            # /docs route only — NO inline menuItem. The Docs sidebar entry
+            # is promoted into the CORE menu group as `default.docs` (see
+            # default.main-menu-items below) so it can sit BETWEEN APIs and
+            # Self-service. The app-shell renders default.* items and plugin
+            # items as two divider-separated groups (Root.tsx
+            # renderMenuItems filters on the `default.` name prefix), so a
+            # plugin-named "docs" item can never cross into the core group
+            # by priority alone.
+            - path: /docs
+              importName: TechDocsIndexPage
+            - path: /docs/:namespace/:kind/:name/*
+              importName: TechDocsReaderPage
+          mountPoints:
+            # `layout` is NOT optional here, and omitting it is a width bug,
+            # not a cosmetic default. DynamicEntityTab renders every mount
+            # point as `<Box sx={config.layout}>` inside a
+            # `repeat(12, minmax(0,1fr))` grid container
+            # (packages/app/src/components/catalog/EntityPage/
+            # DynamicEntityTab.tsx), so a card with no layout takes ONE of
+            # twelve columns — the TechDocs reader rendered at 115px inside a
+            # 1624px tab. Upstream declares exactly this at
+            # app-config.dynamic-plugins.yaml:547; measured 115px → 1624px.
+            #
+            # Upstream also carries `if: allOf: [isTechDocsAvailable]` here.
+            # Deliberately NOT copied: it HIDES the Docs tab on entities with
+            # no TechDocs annotation (measured — the tab disappears on the
+            # m5-orders-demo fixture), which is a product decision about
+            # entities without docs, not part of this width fix.
+            - mountPoint: entity.page.docs/cards
+              importName: EntityTechdocsContent
+              config:
+                layout:
+                  gridColumn: "1 / -1"
+- package: ./dynamic-plugins/dist/backstage-plugin-techdocs-backend-dynamic
+  disabled: false
+- package: ./dynamic-plugins/dist/backstage-plugin-techdocs-module-addons-contrib
+  disabled: false
+# ── Notifications + Signals (GAP-003; frontend config registers the
+#    /notifications route + the sidebar "Notifications" item) ───────────
+- package: ./dynamic-plugins/dist/backstage-plugin-notifications
+  disabled: false
+  pluginConfig:
+    dynamicPlugins:
+      frontend:
+        backstage.plugin-notifications:
+          dynamicRoutes:
+            - path: /notifications
+              importName: NotificationsPage
+              menuItem:
+                icon: notifications
+                text: Notifications
+          menuItems:
+            notifications:
+              priority: 80
+- package: ./dynamic-plugins/dist/backstage-plugin-signals
+  disabled: false
+- package: ./dynamic-plugins/dist/backstage-plugin-notifications-backend-dynamic
+  disabled: false
+- package: ./dynamic-plugins/dist/backstage-plugin-signals-backend-dynamic
+  disabled: false
+# ── Tech Radar (GAP-005; pluginConfig copied from 2.x recommended.yaml:44-66) ─
+- package: ./dynamic-plugins/dist/backstage-community-plugin-tech-radar
+  disabled: false
+  pluginConfig:
+    dynamicPlugins:
+      frontend:
+        backstage-community.plugin-tech-radar:
+          appIcons:
+            - name: techRadar
+              importName: TechRadarIcon
+          dynamicRoutes:
+            - path: /tech-radar
+              importName: TechRadarPage
+              menuItem:
+                icon: techRadar
+                text: Tech Radar
+                textKey: menuItem.techRadar
+              config:
+                props:
+                  width: 1500
+                  height: 800
+          menuItems:
+            tech-radar:
+              priority: 76
+- package: ./dynamic-plugins/dist/backstage-community-plugin-tech-radar-backend-dynamic
+  disabled: false
