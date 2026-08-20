@@ -478,3 +478,15 @@ ENV SEGMENT_TEST_MODE=true
 #     sh install-dynamic-plugins.sh <dynamic-plugins-root>
 COPY --chown=1001:1001 veecode/regenerate-extensions-install.js ./
 RUN chmod a=r ./regenerate-extensions-install.js
+
+# M3 block 2 (OD1 phase B): level-1 config merge, staged the same way as the
+# regen above (COPY only, never invoked by any ENTRYPOINT/CMD reference in
+# this repo). Orchestration outside this repo chains it between the regen
+# and the installer at the install-step:
+#   node regenerate-extensions-install.js --config <...> && \
+#     node merge-dynamic-plugins.js && \
+#     sh install-dynamic-plugins.sh <dynamic-plugins-root>
+# See merge-dynamic-plugins.js's header for why the marketplace write-through
+# must land at level 1 instead of the level-0 `includes:` it used to occupy.
+COPY --chown=1001:1001 veecode/merge-dynamic-plugins.js ./
+RUN chmod a=r ./merge-dynamic-plugins.js
