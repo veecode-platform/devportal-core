@@ -1,4 +1,4 @@
-# /opt/app-root/src/dynamic-plugins.yaml — baked default, additive (M2 revision 3.1)
+# /opt/app-root/src/dynamic-plugins.yaml — baked default, additive (OD1 phase A)
 #
 # Fixed file name: the npm installer
 # (@red-hat-developer-hub/cli-module-install-dynamic-plugins@0.4.0) reads this
@@ -7,12 +7,27 @@
 # equivalent baked file; the operator never had to create it from scratch
 # (D3).
 #
-# Minimal content by conscious decision: zero active plugins by default. The
-# VeeCode "chrome" set lands in M4 through the same mechanism — overridden by
-# a bind mount, never edited here at runtime.
+# `plugins:` stays empty by conscious decision — this file is the no-chart
+# boot path (plain `docker run`, no Helm), and it is superseded entirely by
+# the chart-rendered ConfigMap under Helm. The `includes:` entry below wires
+# in the VeeCode product face (Home, header, TechDocs, Notifications, Tech
+# Radar, Marketplace, theme — veecode/dynamic-plugins.veecode.yaml) so a
+# plain `docker run` of this image still boots WITH the face, not faceless.
 #
-# To enable plugins: mount your own dynamic-plugins.yaml over this path
-# (read-only) — the same pattern the 2.x compose used. Browse the plugins
+# NOTE (main only): release-1.10's fail-closed/backstop guard lived inside
+# the vendorized install-dynamic-plugins.py. That script does not exist on
+# this branch — the installer is consumed from npm
+# (@red-hat-developer-hub/cli-module-install-dynamic-plugins), which has no
+# equivalent guard at boot. The Containerfile instead asserts the face
+# file's shape at BUILD time (grep-counts its `- package:` entries right
+# after the COPY) — a broken/short/missing face file fails the image build.
+# What still has no equivalent on main: the boot-time wired-backstop for a
+# correct face file that gets silently dropped from `includes:` above by a
+# later edit — that failure mode is not caught here or at build time.
+#
+# To add your own plugins: mount your own dynamic-plugins.yaml over this path
+# (read-only) — the same pattern the 2.x compose used, or append to
+# `plugins:` if you're maintaining a derived image. Browse the plugins
 # pre-packaged in this image with: ls dynamic-plugins/dist/ (each directory
 # name is the exact "package:" path to use here, e.g.
 # ./dynamic-plugins/dist/backstage-community-plugin-tech-radar).
@@ -21,8 +36,11 @@
 # convention): that name is a placeholder the installer replaces when
 # CATALOG_INDEX_IMAGE is set. This image ships no file at that path and sets
 # no CATALOG_INDEX_IMAGE default, so without the env var the installer warns
-# and skips it — same as stock upstream.
+# and skips it — same as stock upstream. dynamic-plugins.veecode.yaml is a
+# distinct, non-reserved name and is not affected by that substitution.
 #
 # Do NOT use "preInstalled: true" — this image's plugin installer doesn't
 # support that key.
+includes:
+  - dynamic-plugins.veecode.yaml
 plugins: []

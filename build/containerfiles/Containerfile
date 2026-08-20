@@ -408,6 +408,27 @@ COPY --chown=1001:0 veecode/dynamic-plugins.yaml /opt/app-root/src/dynamic-plugi
 # plugins, no theme and no marketplace. It is not meant to run alone.
 # See devportal-planning: docs/adr/003 (amendment point 9), docs/milestones/M4.6.md.
 
+# OD1 phase A: baked VeeCode product-face plugin list, referenced via the
+# chart's global.dynamic.includes so a customer's global.dynamic.plugins
+# override can no longer silently erase the face (see veecode/dynamic-plugins.veecode.yaml).
+COPY --chown=1001:0 veecode/dynamic-plugins.veecode.yaml /opt/app-root/src/dynamic-plugins.veecode.yaml
+
+# OD1 phase A, main-only: release-1.10's boot-time fail-closed/backstop guard
+# for this file lived inside the vendorized install-dynamic-plugins.py, which
+# does not exist on this branch (installer consumed from npm — see AGENTS.md).
+# There is no equivalent guard at boot on veecode/main, so this asserts the
+# face's shape at BUILD time instead: the image simply cannot be built with a
+# missing, empty, or short-count face file. (The Helm path is separately
+# guarded by the chart's values-schema gate, chart 0.1.10+.) A plain grep
+# count is used rather than a YAML parse because neither PyYAML nor a JS YAML
+# lib is guaranteed installed at this point in the image.
+RUN FACE_FILE=/opt/app-root/src/dynamic-plugins.veecode.yaml; \
+    FACE_ENTRY_COUNT=$(grep -c '^- package:' "$FACE_FILE" || true); \
+    if [ ! -s "$FACE_FILE" ] || [ "$FACE_ENTRY_COUNT" -ne 20 ]; then \
+      echo "FATAL: $FACE_FILE missing, empty, or does not contain exactly 20 plugin entries (found: ${FACE_ENTRY_COUNT:-0})" >&2; \
+      exit 1; \
+    fi
+
 # M2 block 3: neutralize Red Hat's Segment telemetry. Upstream sets
 # SEGMENT_TEST_MODE=false earlier in this stage; the last ENV wins.
 ENV SEGMENT_TEST_MODE=true
