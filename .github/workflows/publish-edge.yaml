@@ -302,8 +302,11 @@ jobs:
             image="${image#oci://}"
             digest="${ref##*@}"
 
+            # --raw: works for both a plain manifest and a manifest list
+            # (plain `skopeo inspect` fails to pick an instance on a list on
+            # some skopeo versions, which would misreport a live pin as dead).
             echo "::group::Inspecting ${image}@${digest}"
-            if ! skopeo inspect "docker://${image}@${digest}" >/dev/null; then
+            if ! skopeo inspect --raw "docker://${image}@${digest}" >/dev/null; then
               echo "::error::Face pin ${image}@${digest} does not exist in the registry (dead digest) — a boot against this face would crash-loop"
               FAILED=1
               echo "::endgroup::"
@@ -311,9 +314,18 @@ jobs:
             fi
             echo "::endgroup::"
 
-            anchor_tag="face-${VERSION}"
+            # Tag includes the digest: two different pins can share the same
+            # repository (e.g. quay.io/veecode/marketplace is pinned twice,
+            # at two different digests, for two different plugin selectors),
+            # and a version-only tag would let the second anchor overwrite
+            # the first, leaving it unprotected again.
+            anchor_tag="face-${VERSION}-${digest#sha256:}"
+            anchor_tag="${anchor_tag:0:127}"
             echo "::group::Anchoring ${image}@${digest} as ${image}:${anchor_tag}"
-            skopeo copy "docker://${image}@${digest}" "docker://${image}:${anchor_tag}"
+            # --all: copy every instance of a manifest list, not just the
+            # arch the runner would default to — otherwise the anchor tag
+            # would protect a different digest than the one being pinned.
+            skopeo copy --all "docker://${image}@${digest}" "docker://${image}:${anchor_tag}"
             echo "::endgroup::"
             echo "Anchored ${image}@${digest} -> ${image}:${anchor_tag}"
           done
