@@ -352,7 +352,7 @@ plugins:
 
 # ── Marketplace / Extensions (M3 loop) ────────────────────────────────
 # Catalog provider that ingests the extracted index entities.
-- package: ./dynamic-plugins/dist/red-hat-developer-hub-backstage-plugin-catalog-backend-module-extensions-dynamic
+- package: ./dynamic-plugins/dist/red-hat-developer-hub-backstage-plugin-catalog-backend-module-extensions
   disabled: false
 # VeeCode marketplace backend (byte-identical across tags; owns /api/extensions/*).
 - package: oci://quay.io/veecode/marketplace@sha256:d98b28a1f8a453fe697bbc50780ae92e0c54eb7f3c789b0d184728d5b3c07a9e!devportal-marketplace-backend # was :bs_1.53.0
@@ -442,7 +442,7 @@ plugins:
               config:
                 layout:
                   gridColumn: "1 / -1"
-- package: ./dynamic-plugins/dist/backstage-plugin-techdocs-backend-dynamic
+- package: ./dynamic-plugins/dist/backstage-plugin-techdocs-backend
   disabled: false
 - package: ./dynamic-plugins/dist/backstage-plugin-techdocs-module-addons-contrib
   disabled: false
@@ -465,9 +465,9 @@ plugins:
               priority: 80
 - package: ./dynamic-plugins/dist/backstage-plugin-signals
   disabled: false
-- package: ./dynamic-plugins/dist/backstage-plugin-notifications-backend-dynamic
+- package: ./dynamic-plugins/dist/backstage-plugin-notifications-backend
   disabled: false
-- package: ./dynamic-plugins/dist/backstage-plugin-signals-backend-dynamic
+- package: ./dynamic-plugins/dist/backstage-plugin-signals-backend
   disabled: false
 # ── Tech Radar (GAP-005; pluginConfig copied from 2.x recommended.yaml:44-66) ─
 - package: ./dynamic-plugins/dist/backstage-community-plugin-tech-radar
@@ -493,5 +493,5 @@ plugins:
           menuItems:
             tech-radar:
               priority: 76
-- package: ./dynamic-plugins/dist/backstage-community-plugin-tech-radar-backend-dynamic
+- package: ./dynamic-plugins/dist/backstage-community-plugin-tech-radar-backend
   disabled: false
