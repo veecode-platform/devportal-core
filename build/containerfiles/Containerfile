@@ -388,9 +388,19 @@ ENTRYPOINT ["node", "--require", "./instrumentation.js", "packages/backend", "--
 # Spec: devportal-planning docs/milestones/M2.md (revision 3.1).
 # ---------------------------------------------------------------------------
 
-# M2 block 1 (D3): baked minimal dynamic-plugins.yaml — zero active plugins by
-# default; operators mount their own file over this path (same pattern as 2.x).
-COPY --chown=1001:0 veecode/dynamic-plugins.yaml /opt/app-root/src/dynamic-plugins.yaml
+# M2 block 1 (D3), REWORKED at beta.6 (level-1 seam): the installer READS the
+# fixed path /opt/app-root/src/dynamic-plugins.yaml from its CWD, but the init
+# container runs with readOnlyRootFilesystem (upstream contract — the installer
+# itself only ever writes under the /dynamic-plugins-root volume; the beta.5
+# first boot died EROFS proving it). So the fixed read path is now a SYMLINK
+# into the writable data volume, where merge-dynamic-plugins.js writes the real
+# file (${DEVPORTAL_DB_PATH}/dynamic-plugins.yaml) at pre-install time. The old
+# baked minimal file moves to .baked as a dangling-link fallback note: with no
+# data volume mounted AND no merge step (bare `docker run`), the symlink
+# dangles and the installer logs "No dynamic-plugins.yaml found. Skipping" —
+# warn-and-skip, same net behavior as the old zero-plugin baked default.
+COPY --chown=1001:0 veecode/dynamic-plugins.yaml /opt/app-root/src/dynamic-plugins.yaml.baked
+RUN ln -sfn /devportal-data/dynamic-plugins.yaml /opt/app-root/src/dynamic-plugins.yaml
 
 # M2 block 2 (REMOVED at M4.6, 3.0.0-beta.1): the baked guest->admin auth
 # mapping (veecode/app-config.veecode.yaml) used to be COPY'd here and loaded

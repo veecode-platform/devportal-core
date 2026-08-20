@@ -40,9 +40,17 @@
  *     tenant / no marketplace installs yet) and is NOT fatal: proceed with
  *     the operator config alone.
  *
- * Output: /opt/app-root/src/dynamic-plugins.yaml (hardcoded — the installer
- * reads this exact path from its CWD, same fixed-filename contract as the
- * baked default it replaces). The operator document is written back
+ * Output: ${DEVPORTAL_DB_PATH}/dynamic-plugins.yaml — the WRITABLE volume
+ * the regen already writes to. The init container runs with
+ * readOnlyRootFilesystem (upstream contract: the installer only ever WRITES
+ * under the /dynamic-plugins-root volume, never the image fs — proven by
+ * the beta.5 first boot dying EROFS on a rootfs write). The installer still
+ * READS the fixed path /opt/app-root/src/dynamic-plugins.yaml from its CWD;
+ * the Containerfile bakes that path as a symlink pointing at this output,
+ * which is what bridges the fixed-filename contract onto the volume.
+ * DEVPORTAL_DB_PATH missing = fatal, same posture as the operator config:
+ * guessing a write target under a read-only root helps nobody.
+ * The operator document is written back
  * VERBATIM (its `includes:` and every other top-level key are preserved)
  * except `plugins:`, which becomes operator.plugins followed by every
  * extensions.plugins entry whose normalized key is NOT already present in
@@ -64,7 +72,9 @@ const path = require('path');
 const YAML = require('yaml');
 const { normalizePluginKey } = require('./regenerate-extensions-install.js');
 
-const OUT_FILE = '/opt/app-root/src/dynamic-plugins.yaml';
+// Resolved in main() from DEVPORTAL_DB_PATH — see the header note on why the
+// output must land on the writable volume, not the read-only image fs.
+const OUT_BASENAME = 'dynamic-plugins.yaml';
 
 const log = msg => process.stdout.write(`VEECODE merge: ${msg}\n`);
 const warn = msg => process.stderr.write(`VEECODE merge: WARNING — ${msg}\n`);
@@ -141,6 +151,14 @@ function loadExtensionsPlugins() {
 }
 
 function main() {
+  if (!process.env.DEVPORTAL_DB_PATH) {
+    fatal(
+      'DEVPORTAL_DB_PATH is not set; refusing to guess the output volume ' +
+        '(the image fs is read-only — the merged config must land on the ' +
+        'writable data volume the symlinked read path points at)'
+    );
+  }
+  const OUT_FILE = path.join(process.env.DEVPORTAL_DB_PATH, OUT_BASENAME);
   const operator = loadOperatorConfig();
   const operatorPlugins = Array.isArray(operator.doc.plugins) ? operator.doc.plugins : [];
   const extensionsPlugins = loadExtensionsPlugins();
@@ -168,6 +186,27 @@ function main() {
 
   fs.mkdirSync(path.dirname(OUT_FILE), { recursive: true });
   fs.writeFileSync(OUT_FILE, YAML.stringify(mergedDoc));
+
+  // The installer reads the FIXED path below (a baked symlink into the data
+  // volume). If DEVPORTAL_DB_PATH points somewhere the symlink does not, the
+  // installer would warn-and-skip an apparently-missing config and boot a
+  // portal with zero level-1 plugins — fail loudly here instead.
+  const INSTALLER_READ_PATH = '/opt/app-root/src/dynamic-plugins.yaml';
+  let resolved = null;
+  try {
+    resolved = fs.realpathSync(INSTALLER_READ_PATH);
+  } catch (e) {
+    resolved = null;
+  }
+  if (resolved !== fs.realpathSync(OUT_FILE)) {
+    fatal(
+      `wrote ${OUT_FILE}, but the installer's read path ${INSTALLER_READ_PATH} ` +
+        `resolves to ${resolved ?? 'nothing'} — DEVPORTAL_DB_PATH disagrees ` +
+        'with the baked symlink target (/devportal-data); the installer would ' +
+        'silently skip the merged config',
+    );
+  }
+
   log(
     `wrote ${OUT_FILE}: ${operatorPlugins.length} operator plugin(s) + ${mergedExtras.length} marketplace plugin(s)` +
       (mergedExtras.length !== extensionsPlugins.length
