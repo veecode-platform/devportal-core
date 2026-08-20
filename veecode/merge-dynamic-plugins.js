@@ -176,7 +176,9 @@ function main() {
   );
 }
 
-main();
+if (require.main === module) {
+  main();
+}
 
-// Exported for unit tests.
+// Exported for unit tests (require()'ing this file must not run main()).
 module.exports = { loadOperatorConfig, loadExtensionsPlugins };
