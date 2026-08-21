@@ -1,0 +1,51 @@
+---
+# Manually anchor an arbitrary quay.io/veecode image digest under an immutable
+# tag, so quay's garbage collection cannot delete it after its moving tag is
+# republished. Same credential pair the publish-edge face anchor uses.
+name: Anchor image digest
+
+on:
+  workflow_dispatch:
+    inputs:
+      image:
+        description: "Repository under quay.io/veecode (e.g. vertigo-theme)"
+        required: true
+        type: string
+      digest:
+        description: "Manifest digest to anchor (sha256:...)"
+        required: true
+        type: string
+      tag:
+        description: "Immutable tag to create (e.g. m5-verified-f46405d8)"
+        required: true
+        type: string
+
+jobs:
+  anchor:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Anchor digest with skopeo
+        env:
+          QUAY_USERNAME: ${{ secrets.QUAY_USERNAME }}
+          QUAY_TOKEN: ${{ secrets.QUAY_TOKEN }}
+          IMAGE: ${{ inputs.image }}
+          DIGEST: ${{ inputs.digest }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$QUAY_USERNAME" || -z "$QUAY_TOKEN" ]]; then
+            echo "QUAY_USERNAME/QUAY_TOKEN secrets are required" >&2
+            exit 1
+          fi
+          SRC="docker://quay.io/veecode/${IMAGE}@${DIGEST}"
+          DST="docker://quay.io/veecode/${IMAGE}:${TAG}"
+          echo "Anchoring ${SRC} -> ${DST}"
+          skopeo copy --all \
+            --dest-creds "${QUAY_USERNAME}:${QUAY_TOKEN}" \
+            "$SRC" "$DST"
+          RESOLVED=$(skopeo inspect --format '{{.Digest}}' "$DST")
+          if [[ "$RESOLVED" != "$DIGEST" ]]; then
+            echo "Anchor verification failed: ${RESOLVED} != ${DIGEST}" >&2
+            exit 1
+          fi
+          echo "Anchored and verified: quay.io/veecode/${IMAGE}:${TAG} = ${DIGEST}"
