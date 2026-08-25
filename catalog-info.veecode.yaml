@@ -1,0 +1,21 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: devportal-core
+  description: >-
+    VeeCode DevPortal core image — fork of Red Hat Developer Hub (RHDH). Built
+    from the veecode/main line; the image is deliberately "dumb" (plugins:
+    []), all product configuration arrives via chart/tenant at boot (ADR-002).
+  annotations:
+    github.com/project-slug: veecode-platform/devportal-core
+  tags: [fork, rhdh, backstage]
+  links:
+    - url: https://github.com/redhat-developer/rhdh
+      title: "Upstream: redhat-developer/rhdh (weekly automated sync)"
+spec:
+  type: service
+  lifecycle: production
+  owner: group:default/veecode-platform
+  system: veecode-devportal
+  dependsOn:
+    - component:default/rhdh
