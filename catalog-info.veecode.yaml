@@ -4,7 +4,7 @@ metadata:
   name: devportal-core
   description: >-
     VeeCode DevPortal core image — fork of Red Hat Developer Hub (RHDH). Built
-    from the veecode/main line; the image is deliberately "dumb" (plugins:
+    from the main line (formerly veecode/main); the image is deliberately "dumb" (plugins:
     []), all product configuration arrives via chart/tenant at boot (ADR-002).
   annotations:
     github.com/project-slug: veecode-platform/devportal-core
