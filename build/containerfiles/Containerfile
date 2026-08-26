@@ -426,7 +426,7 @@ COPY --chown=1001:0 veecode/dynamic-plugins.veecode.yaml /opt/app-root/src/dynam
 # OD1 phase A, main-only: release-1.10's boot-time fail-closed/backstop guard
 # for this file lived inside the vendorized install-dynamic-plugins.py, which
 # does not exist on this branch (installer consumed from npm — see AGENTS.md).
-# There is no equivalent guard at boot on veecode/main, so this asserts the
+# There is no equivalent guard at boot on main (formerly veecode/main), so this asserts the
 # face's shape at BUILD time instead: the image simply cannot be built with a
 # missing, empty, or short-count face file. (The Helm path is separately
 # guarded by the chart's values-schema gate, chart 0.1.10+.) A plain grep

@@ -22,13 +22,13 @@
 # ENTRYPOINT verbatim.
 #
 # So the assertion is now the inverse: the ENTRYPOINT in the fork's
-# Containerfile (branch veecode/main) must be EXACTLY the one in the live
+# Containerfile (branch main, formerly veecode/main) must be EXACTLY the one in the live
 # upstream/main Containerfile. That single check catches both directions —
 # upstream changing its array, and anyone re-introducing an ENTRYPOINT
 # override here without a decision. Re-adding drift is not forbidden; doing it
 # silently is.
 #
-# veecode/main is also this repo's default branch, so scheduled runs, the
+# main is also this repo's default branch, so scheduled runs, the
 # push trigger, and workflow_dispatch all operate on the same branch — no
 # cross-branch checkout is needed here.
 
@@ -41,7 +41,7 @@ on:
     - cron: "30 8 * * 1"
   push:
     branches:
-      - veecode/main
+      - main
     paths:
       - build/containerfiles/Containerfile
 
@@ -58,10 +58,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Checkout veecode/main
+      - name: Checkout main
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
-          ref: veecode/main
+          ref: main
           fetch-depth: 1
           persist-credentials: false
 

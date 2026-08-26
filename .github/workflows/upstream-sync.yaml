@@ -18,7 +18,7 @@ jobs:
       matrix:
         include:
           - upstream_branch: main
-            veecode_branch: veecode/main
+            veecode_branch: main
           - upstream_branch: release-1.10
             veecode_branch: veecode/release-1.10
     steps:

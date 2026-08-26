@@ -1,5 +1,14 @@
 # AGENTS.md — drift manifest for devportal-core
 
+> **Branch rename (2026-08-26, ADR-009 in devportal-planning):** the product
+> branch `veecode/main` is now **`main`**; the untouched upstream mirror that
+> used to be `main` is now **`upstream/main`**. Reason: Backstage's GitHub URL
+> reader cannot resolve `blob/<branch-with-slash>/<path>` through the API.
+> Everything below that says `veecode/main` refers to today's `main`; the
+> inherited RHDH workflows filtered on `main` are no longer inert — the
+> image-building/PR-opening ones were disabled with `gh workflow disable`.
+
+
 This repository is a fork of [redhat-developer/rhdh](https://github.com/redhat-developer/rhdh),
 maintained as the product base for **VeeCode DevPortal**. Planning, tickets, and
 mission conventions live in [veecode-platform/devportal-planning](https://github.com/veecode-platform/devportal-planning)
@@ -10,7 +19,7 @@ making structural changes here.
 
 - `main` — upstream mirror. Never receives our commits directly; only the
   weekly sync workflow writes to it (fast-forward from `upstream/main`).
-- `veecode/main` — **default branch, and the product/image-building branch as
+- `main` — **default branch, and the product/image-building branch as
   of M3.5** (re-anchor, [ADR-002](https://github.com/veecode-platform/devportal-planning/blob/main/docs/adr/002-reanchor-to-main.md)).
   Our drift over upstream `main` lives here — including the six append-only
   Containerfile blocks and the `veecode/` files (see below). All feature
