@@ -56,6 +56,7 @@
     "@backstage/plugin-catalog-backend-module-openapi": "0.2.23",
     "@backstage/plugin-catalog-backend-module-scaffolder-entity-model": "0.2.21",
     "@backstage/plugin-events-backend": "0.6.3",
+    "@backstage/plugin-events-backend-module-gitlab": "0.3.13",
     "@backstage/plugin-events-node": "0.4.23",
     "@backstage/plugin-permission-backend": "0.7.13",
     "@backstage/plugin-proxy-backend": "0.6.14",
