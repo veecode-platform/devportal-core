@@ -14,9 +14,12 @@ if (targetBranch !== 'main' && !targetBranch.startsWith('release-')) {
   process.exit(1);
 }
 
-const repository = process.env.GITHUB_REPOSITORY || 'redhat-developer/rhdh';
+const repository = process.env.GITHUB_REPOSITORY || 'veecode-platform/devportal-core';
 
 const backstageJsonPath = 'backstage.json';
+// Links in the generated doc must point at the repository the workflow runs in,
+// not at the upstream this file was copied from.
+const repoUrl = `https://github.com/${repository}`;
 const frontendPackageJsonPath = 'packages/app/package.json';
 const backendPackageJsonPath = 'packages/backend/package.json';
 
@@ -139,7 +142,7 @@ async function main() {
 ## RHDH ${release} ${targetBranch === "main" ? preRelaseInfo : ""}
 
 <!-- source
-https://github.com/redhat-developer/rhdh/blob/${targetBranch}/backstage.json
+${repoUrl}/blob/${targetBranch}/backstage.json
 -->
 
 Based on [Backstage ${backstageVersion}](https://backstage.io/docs/releases/v${minorBackstageVersion}.0)
@@ -156,9 +159,9 @@ ${frontendTable}
 
 
 If you want to check versions of other packages, you can check the 
-[\`package.json\`](https://github.com/redhat-developer/rhdh/blob/${targetBranch}/packages/app/package.json) in the
-[\`app\`](https://github.com/redhat-developer/rhdh/tree/${targetBranch}/packages/app) package 
-in the \`${targetBranch}\` branch of the [RHDH repository](https://github.com/redhat-developer/rhdh/tree/${targetBranch}).
+[\`package.json\`](${repoUrl}/blob/${targetBranch}/packages/app/package.json) in the
+[\`app\`](${repoUrl}/tree/${targetBranch}/packages/app) package 
+in the \`${targetBranch}\` branch of the [repository](${repoUrl}/tree/${targetBranch}).
 
 ### Backend packages
 
@@ -166,9 +169,9 @@ ${backendTable}
 
 
 If you want to check versions of other packages, you can check the
-[\`package.json\`](https://github.com/redhat-developer/rhdh/blob/${targetBranch}/packages/backend/package.json) in the
-[\`backend\`](https://github.com/redhat-developer/rhdh/tree/${targetBranch}/packages/backend) package
-in the \`${targetBranch}\` branch of the [RHDH repository](https://github.com/redhat-developer/rhdh/tree/${targetBranch}).
+[\`package.json\`](${repoUrl}/blob/${targetBranch}/packages/backend/package.json) in the
+[\`backend\`](${repoUrl}/tree/${targetBranch}/packages/backend) package
+in the \`${targetBranch}\` branch of the [repository](${repoUrl}/tree/${targetBranch}).
 `
 
   await writeToFile(outputFilePath, out);

@@ -11,16 +11,14 @@ on:
       - "packages/app/package.json"
       - "packages/backend/package.json"
 
+permissions:
+  contents: write
+  pull-requests: write
+
 jobs:
   update-versions-md:
     runs-on: ubuntu-latest
     steps:
-      - name: Generate token
-        id: generate-token
-        uses: actions/create-github-app-token@d72941d797fd3113feb6b93fd0dec494b13a2547 # v1.12.0
-        with:
-          app-id: ${{ secrets.RHDH_GITHUB_APP_ID }}
-          private-key: ${{ secrets.RHDH_GITHUB_APP_PRIVATE_KEY }}
 
       - name: Checkout repository
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
@@ -37,7 +35,7 @@ jobs:
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@22a9089034f40e5a961c8808d113e2c98fb63676 # v7.0.11
         with:
-          token: ${{ steps.generate-token.outputs.token }}
+          token: ${{ secrets.GITHUB_TOKEN }}
           commit-message: "chore(docs): Update versions.md in dynamic plugin documentation"
           branch: chore/automated-update-versions-doc-${{ github.ref_name }}
           title: "chore(docs): [${{ github.ref_name }}] Update versions.md in dynamic plugin documentation"
