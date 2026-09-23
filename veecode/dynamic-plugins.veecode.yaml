@@ -321,9 +321,11 @@ plugins:
               variant: dark
               importName: VeecodeDarkThemeProvider
 
-# ── About (npm spec; /about under Administration) ─────────────────────
-- package: "@veecode-platform/backstage-plugin-about-dynamic@1.1.0"
-  integrity: "sha512-t39lBHEqNQ1B3enyYAvkUtGaEGx1Hxox3p4Vw7ZDcnmXzydG1vsO/rc1Ny0ra4TMhbkN84ECcQGpTwO5wUILMg=="
+# ── About (/about under Administration) ───────────────────────────────
+# Delivered from the export-overlays OCI pipeline (workspaces/about), like
+# veecode-homepage; npm 1.1.0 was its last npm release. Pinned by digest:
+# bs_* tags are mutable in the overlays fleet.
+- package: oci://quay.io/veecode/veecode-platform-backstage-plugin-about@sha256:5746126ea0129d0125d0fada629b543c981d121bbfd27263dfec0fcae9568ead!veecode-platform-backstage-plugin-about # was :bs_1.52.0__1.2.1
   disabled: false
   pluginConfig:
     dynamicPlugins:
@@ -345,9 +347,8 @@ plugins:
               title: About
               icon: aboutIcon
 
-# ── About backend (npm spec; no pluginConfig) ─────────────────────────
-- package: "@veecode-platform/backstage-plugin-about-backend-dynamic@1.1.0"
-  integrity: "sha512-LBAbJd/c9UbAh61jToFPXBe3s10Fj01a2pu7SnU3tO5qqxFCmQs6UuEREXERPSmRNdwFuBdggfruDVIrdevI0Q=="
+# ── About backend (no pluginConfig) ───────────────────────────────────
+- package: oci://quay.io/veecode/veecode-platform-backstage-plugin-about-backend@sha256:99ca46df8ebda0e36793c18533c3fc4f00dd099467931bc3bf7685cc35958ac7!veecode-platform-backstage-plugin-about-backend # was :bs_1.52.0__1.2.0
   disabled: false
 
 # ── Marketplace / Extensions (M3 loop) ────────────────────────────────
