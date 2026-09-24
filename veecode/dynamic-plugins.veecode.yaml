@@ -99,19 +99,19 @@ plugins:
 
 # VeeCode analytics home (greeting + highlighted card + stat cards +
 # summary + visited charts) — the 2.x default. Delivered from the
-# export-overlays OCI pipeline (workspaces/veecode-homepage pinning
-# devportal-plugins@67cf92a — the M5 crypto.randomUUID polyfill commit; the earlier 08980aa1 pin predated it and the polyfill-less build shipped silently after quay GC'd the M5 digest 13f6f2f6), the same channel as veecode-theme —
+# export-overlays OCI pipeline (workspaces/veecode-homepage, released from
+# devportal-plugins main as 1.0.3 with the crypto.randomUUID fallback that
+# lets plain-HTTP origins record visits), the same channel as veecode-theme —
 # devportal-plugins is source-only, its npm publish path is retired.
 # The bundle carries the VisitListener export and the config.d.ts and
-# useVisited(orderBy) fixes, built for this 1.52 shell (scoped publish
-# branch homepage/bs-1.52.0, supported-versions 1.52.0). If the route
+# useVisited(orderBy) fixes, built for this 1.52 shell. If the route
 # 404s or mounts blank, check the browser console for
 # scalprum/shared-scope errors FIRST.
 # Pinned by DIGEST (the installer's documented integrity mechanism,
 # docs/dynamic-plugins/installing-plugins.md:142) — bs_* tags are
 # mutable in the overlays fleet (retag promotion). Digest below is
-# tag bs_1.52.0 at publish time; bumping = new digest here.
-- package: oci://quay.io/veecode/veecode-homepage@sha256:cc8709920f2c8724dfca2c26b807e4bfbde65334ab9bf97c37e98890ed2a0f6c!veecode-platform-plugin-veecode-homepage # was :bs_1.52.0
+# tag bs_1.52.0__1.0.3 at publish time; bumping = new digest here.
+- package: oci://quay.io/veecode/veecode-platform-plugin-veecode-homepage@sha256:897d9ae74de429f5df809c1b315281e4926dac77f49848c3e51843203a28709e!veecode-platform-plugin-veecode-homepage # was :bs_1.52.0__1.0.3
   disabled: false
   pluginConfig:
     dynamicPlugins:
