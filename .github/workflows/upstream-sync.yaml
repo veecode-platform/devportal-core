@@ -91,7 +91,7 @@ jobs:
                 files,
                 "```",
                 "",
-                "See `AGENTS.md` (drift manifest) for the additive-first rule before resolving.",
+                "See `docs/upstream-drift.md` (drift manifest) for the additive-first rule before resolving.",
                 "",
                 `Workflow run: ${runUrl}`,
               ].join("\n"),
