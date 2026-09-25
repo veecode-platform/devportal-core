@@ -1,7 +1,7 @@
 # Base image from Microsoft Playwright (multi-arch: amd64 + arm64)
-# Playwright v1.61.1-noble includes Node 24.14.1
+# Playwright v1.62.1-noble includes Node 24.14.1
 # Pinned to manifest list digest to support both platforms
-FROM mcr.microsoft.com/playwright:v1.61.1-noble@sha256:5b8f294aff9041b7191c34a4bab3ac270157a28774d4b0660e9743297b697e48
+FROM mcr.microsoft.com/playwright:v1.62.1-noble@sha256:dcc5531e97840b9b5e794f2814476b21571c5124a3fca2267d73041f56e7580e
 
 # Automatically set by buildx/podman based on --platform (amd64 or arm64)
 ARG TARGETARCH
@@ -76,7 +76,7 @@ RUN curl -sL https://aka.ms/InstallAzureCLIDeb | bash && \
 RUN echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list && \
     curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg && \
     apt-get update -y && \
-    apt-get install google-cloud-cli google-cloud-sdk-gke-gcloud-auth-plugin -y && \
+    apt-get install google-cloud-cli google-cloud-cli-gke-gcloud-auth-plugin -y && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 # Install AWS CLI (uname -m returns x86_64 on amd64, aarch64 on arm64 — matching AWS URL naming)

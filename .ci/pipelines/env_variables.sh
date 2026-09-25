@@ -1,5 +1,10 @@
 #!/bin/bash
 # shellcheck disable=SC2034
+if [[ -n "${ENV_VARIABLES_SOURCED:-}" ]]; then
+  return 0
+fi
+readonly ENV_VARIABLES_SOURCED=1
+
 set -a # Automatically export all variables
 
 # Define log file names and directories.
@@ -55,17 +60,20 @@ IMAGE_REGISTRY="${IMAGE_REGISTRY:-quay.io}"
 IMAGE_REPO="${IMAGE_REPO:-${QUAY_REPO:-rhdh-community/rhdh}}"
 QUAY_REPO="${IMAGE_REPO}" # Keep QUAY_REPO in sync for backward compatibility
 
-# Catalog index image reference.
-# Override via Gangway for RC (e.g., --catalog-index-image quay.io/rhdh/plugin-catalog-index:1.9-60) or
-# GA verification (e.g., --catalog-index-image registry.access.redhat.com/rhdh/plugin-catalog-index:1.9.4).
-CATALOG_INDEX_IMAGE="${CATALOG_INDEX_IMAGE:-}"
+# Catalog index image, derived from RELEASE_VERSION (main → :next, release-1.10 → :1.10).
+# Per-run (RC/GA/mirror): non-empty CATALOG_INDEX_IMAGE wins (Gangway / --catalog-index-image).
+if [[ -z "${CATALOG_INDEX_IMAGE:-}" ]]; then
+  CATALOG_INDEX_IMAGE="quay.io/rhdh/plugin-catalog-index:${RELEASE_VERSION}"
+fi
 if [[ -n "${CATALOG_INDEX_IMAGE}" ]]; then
-  # Derived components for Helm chart (requires separate registry/repository/tag)
+  # Derived components for Helm --set global.catalogIndex.image.{registry,repository,tag}
   CATALOG_INDEX_TAG="${CATALOG_INDEX_IMAGE##*:}"
   _CI_WITHOUT_TAG="${CATALOG_INDEX_IMAGE%:*}"
   CATALOG_INDEX_REGISTRY="${_CI_WITHOUT_TAG%%/*}"
   CATALOG_INDEX_REPO="${_CI_WITHOUT_TAG#*/}"
   unset _CI_WITHOUT_TAG
+else
+  unset CATALOG_INDEX_TAG CATALOG_INDEX_REGISTRY CATALOG_INDEX_REPO
 fi
 
 # =============================================================================
