@@ -45,6 +45,10 @@ gh workflow run publish-edge.yaml --ref <branch> -f publish=false -f version=<an
 
 ## Release path
 
+Cut a release with the `devportal-release` skill
+(`.rulesync/skills/devportal-release/`); it walks every hop below and checks
+the end state.
+
 `publish-edge.yaml` with `publish=true` pushes the immutable version tag and
 moves `:edge` to the same digest. The chart then moves `appVersion`, the image
 tag and the digest together in `veecode-platform/devportal-chart`, whose CI
