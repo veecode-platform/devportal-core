@@ -37,11 +37,15 @@ concurrency:
 
 env:
   REGISTRY: quay.io
-  REGISTRY_IMAGE: rhdh-community/rhdh
+  # Forks: set repo variable QUAY_RHDH_IMAGE_REPO to your own Quay repo (namespace/repo)
+  # and secrets QUAY_USERNAME/QUAY_TOKEN scoped to that namespace (not rhdh-community).
+  # See CONTRIBUTING.md ("Testing image builds from a fork").
+  REGISTRY_IMAGE: ${{ vars.QUAY_RHDH_IMAGE_REPO || 'rhdh-community/rhdh' }}
 
 jobs:
   build-image:
     name: Build Image
+    if: github.repository == 'redhat-developer/rhdh' || vars.QUAY_RHDH_IMAGE_REPO != '' || github.event_name == 'workflow_dispatch'
     env:
       HAS_QUAY_AUTH: ${{ secrets.QUAY_USERNAME != '' && secrets.QUAY_TOKEN != '' }}
     strategy:
@@ -56,6 +60,12 @@ jobs:
       contents: read
       packages: write
     steps:
+      - name: Guard against pushing to shared repo from a fork
+        if: github.repository != 'redhat-developer/rhdh' && startsWith(env.REGISTRY_IMAGE, 'rhdh-community/')
+        run: |
+          echo "::error::Forks must set repository variable QUAY_RHDH_IMAGE_REPO to a Quay repo outside the rhdh-community namespace."
+          exit 1
+
       - name: Checkout
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
@@ -165,15 +175,23 @@ jobs:
           retention-days: 1
 
   merge:
+      if: github.repository == 'redhat-developer/rhdh' || vars.QUAY_RHDH_IMAGE_REPO != '' || github.event_name == 'workflow_dispatch'
       runs-on: ubuntu-latest
       needs:
         - build-image
       permissions:
         contents: write
         pull-requests: write
+        id-token: write
       env:
         HAS_QUAY_AUTH: ${{ secrets.QUAY_USERNAME != '' && secrets.QUAY_TOKEN != '' }}
       steps:
+        - name: Guard against pushing to shared repo from a fork
+          if: github.repository != 'redhat-developer/rhdh' && startsWith(env.REGISTRY_IMAGE, 'rhdh-community/')
+          run: |
+            echo "::error::Forks must set repository variable QUAY_RHDH_IMAGE_REPO to a Quay repo outside the rhdh-community namespace."
+            exit 1
+
         - name: Login to Quay
           uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
           with:
@@ -226,6 +244,9 @@ jobs:
 
         - name: Set up Docker Buildx
           uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+
+        - name: Install cosign
+          uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
 
         - name: Set container metadata (for :next builds, 14d expiry)
           id: meta-next
@@ -327,6 +348,28 @@ jobs:
             done
 
             echo "Propagation check completed"
+
+        - name: Sign the published images
+          if: env.HAS_QUAY_AUTH == 'true'
+          env:
+            META_RELEASE_JSON: ${{ steps.meta-release.outputs.json }}
+            META_NEXT_JSON: ${{ steps.meta-next.outputs.json }}
+          run: |
+            meta="$META_RELEASE_JSON"
+            if [ -z "$meta" ] || [ "$meta" = "null" ]; then
+              meta="$META_NEXT_JSON"
+            fi
+
+            echo "$meta" | jq -r '.tags | unique[]' | while IFS= read -r tag; do
+              [ -z "$tag" ] && continue
+              DIGEST=$(docker buildx imagetools inspect "$tag" | grep '^Digest:' | awk '{print $2}')
+              if [ -z "$DIGEST" ] || [ "$DIGEST" = "null" ]; then
+                echo "::error::Could not resolve digest for ${tag}"
+                exit 1
+              fi
+              echo "Signing ${tag}@${DIGEST}"
+              cosign sign --yes "${tag}@${DIGEST}"
+            done
 
         - name: Manage expiry and cleanup per-arch images
           if: env.HAS_QUAY_AUTH == 'true'
