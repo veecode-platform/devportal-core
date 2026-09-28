@@ -183,9 +183,10 @@ on 2026-09-25:
   `e2e-cluster-free.yaml`, `update-backstage.yaml`,
   `update-rpm-lockfile.yaml`, `auto-approve-bot-prs.yaml`,
   `coverage-baseline.yml`, `link-checker.yaml`, `stale.yaml`,
-  `sync-owners-aliases.yaml`.
+  `sync-owners-aliases.yaml`, and, since 2026-09-25, the VeeCode
+  `upstream-sync.yaml` (paused until the Backstage 1.54 work).
 - **Active:** the VeeCode workflows (`publish-edge.yaml`, `anchor-digest.yaml`,
-  `entrypoint-drift.yaml`, `secret-scan.yaml`, `upstream-sync.yaml`) and the
+  `entrypoint-drift.yaml`, `secret-scan.yaml`) and the
   inherited `cache-cleanup.yaml`, `codeql.yaml`, `pr-semantic.yaml` and
   `update-versions.yaml`.
 
