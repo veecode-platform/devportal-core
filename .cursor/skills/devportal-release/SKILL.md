@@ -9,6 +9,9 @@ manual. A release that stops halfway leaves the chart, the local runner and the 
 images without anyone noticing. Carry every release through the whole graph in one
 pass, and prove the end state with `scripts/release-status.sh`.
 
+Script paths are relative to this skill's folder. From the repository root they are
+`.claude/skills/devportal-release/scripts/` (the source copy is `.rulesync/skills/devportal-release/scripts/`).
+
 ## The graph
 
 | # | Node | What moves it | Manual? |
