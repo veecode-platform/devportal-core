@@ -1,4 +1,14 @@
-# Red Hat Developer Hub (RHDH)
+# VeeCode DevPortal
+
+This repository builds the VeeCode DevPortal image, a VeeCode fork of Red Hat Developer Hub. The image is published at `docker.io/veecode/devportal`.
+
+Install VeeCode DevPortal with the [`devportal` Helm chart](https://veecode-platform.github.io/next-charts).
+
+Read the [DevPortal 3.x installation guide](https://docs-next.platform.vee.codes/devportal/installation-guide/v3-preview/intro/) on the preview documentation site.
+
+Contributors can start with [AGENTS.md](AGENTS.md).
+
+## Red Hat Developer Hub (RHDH) upstream README
 
 [0]: https://quay.io/repository/rhdh-community/rhdh
 [0]: https://quay.io/repository/rhdh/rhdh-hub-rhel9
