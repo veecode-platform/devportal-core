@@ -45,7 +45,8 @@
  *     (see build/containerfiles/Containerfile, runner stage), so this
  *     sub-feature ports with no substitution. Unlike 2.x, a row whose digest
  *     cannot be resolved is skipped instead of abandoning the regeneration,
- *     and disabled rows are never resolved.
+ *     disabled rows are never resolved, and OCI refs without a `!` selector
+ *     are pinned too.
  *
  * Config is read with the same --config files the backend gets (passed as
  * args), via @backstage/config-loader, so ${VAR:-default} and the
@@ -217,15 +218,36 @@ async function loadInstallations(clientConfig) {
   }
 }
 
-// Split an OCI plugin ref into its image part and its `!selector` suffix.
-// Mirrors install-dynamic-plugins.py, which does `package.split('!')` and then
-// `image.replace('oci://','docker://')`. Returns null for anything that is not an
-// OCI ref — local `./dir` paths and bare npm names have no digest to resolve.
+// Split an OCI plugin ref into its image part and its optional `!selector`
+// suffix (null when absent: the installer then detects the plugin path from the
+// image). Mirrors install-dynamic-plugins.py, which does `package.split('!')` and
+// then `image.replace('oci://','docker://')`. Returns null for anything that is
+// not an OCI ref — local `./dir` paths and bare npm names have no digest to
+// resolve.
 function splitOciRef(ref) {
   if (typeof ref !== 'string' || !ref.startsWith('oci://')) return null;
   const bang = ref.indexOf('!');
-  if (bang === -1) return null;
+  if (bang === -1) return { image: ref, selector: null };
   return { image: ref.slice(0, bang), selector: ref.slice(bang + 1) };
+}
+
+// The registry/repository part of an OCI image, without its tag or digest. Strip
+// the digest (after '@') first, then strip the tag only if the last ':' comes
+// after the last '/' — a port in the registry host (host:5000/...) also contains
+// a ':' before the first '/', and must NOT be mistaken for a tag separator (the
+// installer's own EXPECTED_OCI_PATTERN explicitly allows a port in the registry).
+function ociRepository(image) {
+  const noDigest = image.replace(/^oci:\/\//, '').split('@')[0];
+  const lastColon = noDigest.lastIndexOf(':');
+  const lastSlash = noDigest.lastIndexOf('/');
+  return lastColon > lastSlash ? noDigest.slice(0, lastColon) : noDigest;
+}
+
+// The digest an OCI image already names (`repo@sha256:...`), in the installer's
+// digest grammar, or null when it names a tag.
+function addressedDigest(image) {
+  const match = /@((?:sha256|sha512|blake3):[^\s!@:]+)$/.exec(image);
+  return match ? match[1] : null;
 }
 
 // Rewrite an OCI ref so the image is addressed by digest instead of by tag.
@@ -236,8 +258,8 @@ function splitOciRef(ref) {
 function refWithDigest(ref, digest) {
   const parts = splitOciRef(ref);
   if (!parts) return ref;
-  const repo = parts.image.replace(/^oci:\/\//, '').split('@')[0].split(':')[0];
-  return `oci://${repo}@${digest}!${parts.selector}`;
+  const selector = parts.selector === null ? '' : `!${parts.selector}`;
+  return `oci://${ociRepository(parts.image)}@${digest}${selector}`;
 }
 
 // Resolve an OCI ref to its manifest digest, once, via the skopeo already present
@@ -349,24 +371,18 @@ function rowsToPlugins(rows, effectiveRefs = new Map()) {
 // face entry against its regenerated counterpart. Mirrors the installer's
 // parse_plugin_key version-stripping (install-dynamic-plugins.py:503-565 for OCI,
 // :409-460 for npm) closely enough for dedup purposes: OCI compares on the
-// registry/image path plus the `!<plugin-path>` selector with the tag/digest
-// stripped; npm-style refs compare with any trailing `@<version>` stripped; local
-// `./` paths compare as-is (there is nothing to strip).
+// registry/image path, plus the `!<plugin-path>` selector when the ref has one,
+// with the tag/digest stripped; npm-style refs compare with any trailing
+// `@<version>` stripped; local `./` paths compare as-is (there is nothing to
+// strip). The installer detects a selector-less ref's plugin path from the image,
+// so such a ref never matches a selector-bearing one here.
 function normalizePluginKey(ref) {
   if (typeof ref !== 'string') return ref;
   if (ref.startsWith('./')) return ref;
   const oci = splitOciRef(ref);
   if (oci) {
-    // Strip the digest (after '@') first, then strip the tag only if the last ':'
-    // comes after the last '/' — a port in the registry host (host:5000/...) also
-    // contains a ':' before the first '/', and must NOT be mistaken for a tag
-    // separator (the installer's own EXPECTED_OCI_PATTERN explicitly allows a
-    // port in the registry).
-    const noDigest = oci.image.replace(/^oci:\/\//, '').split('@')[0];
-    const lastColon = noDigest.lastIndexOf(':');
-    const lastSlash = noDigest.lastIndexOf('/');
-    const registry = lastColon > lastSlash ? noDigest.slice(0, lastColon) : noDigest;
-    return `oci://${registry}!${oci.selector}`;
+    const repository = `oci://${ociRepository(oci.image)}`;
+    return oci.selector === null ? repository : `${repository}!${oci.selector}`;
   }
   const at = ref.lastIndexOf('@');
   return at > 0 ? ref.slice(0, at) : ref;
@@ -548,8 +564,11 @@ async function main() {
   // ── T1.3: pin every enabled OCI selection to a digest ─────────────────────
   //
   // A restart must reinstall the SAME bytes, so the YAML never carries a bare
-  // tag for an enabled selection. Two shapes arrive here:
+  // tag for an enabled selection. Three shapes arrive here, with or without a
+  // `!selector`:
   //
+  //   * the ref already names a digest (repo@sha256:...) -> keep it, no registry
+  //     call, and store it in resolved_digest like a resolved one.
   //   * resolved_digest already stored  -> reuse it, no registry call at all.
   //     This is what makes a restart deterministic: the tag is never consulted
   //     again, even if it moved.
@@ -561,9 +580,9 @@ async function main() {
   //     selections still regenerate.
   //
   // Disabled selections are never resolved, because the installer does not
-  // pull them: they keep a stored digest when they have one and otherwise pass
-  // through as stored. Non-OCI selections (local ./dir, bare npm names) have no
-  // digest and pass through untouched.
+  // pull them: they keep a digest their ref names or a stored one, and otherwise
+  // pass through as stored. Non-OCI selections (local ./dir, bare npm names)
+  // have no digest and pass through untouched.
   const effectiveRefs = new Map();
   const hasDigestColumn = columns.has('resolved_digest');
   const skipped = new Set();
@@ -572,20 +591,25 @@ async function main() {
   let disabled = 0;
   for (const row of rows) {
     const requested = row.requested_ref || row.package_name;
-    if (!splitOciRef(requested)) {
+    const oci = splitOciRef(requested);
+    if (!oci) {
       nonOci++; // not an OCI ref, nothing to pin
       continue;
     }
 
-    const storedDigest = hasDigestColumn && row.resolved_digest;
-    if (storedDigest) {
-      effectiveRefs.set(row.package_name, refWithDigest(requested, storedDigest));
+    const addressed = addressedDigest(oci.image);
+    if (addressed && hasDigestColumn && row.resolved_digest !== addressed) {
+      await persistDigest(clientConfig, schema, row.package_name, addressed);
+    }
+    const knownDigest = addressed || (hasDigestColumn && row.resolved_digest);
+    if (knownDigest) {
+      effectiveRefs.set(row.package_name, refWithDigest(requested, knownDigest));
     }
     if (row.disabled) {
       disabled++;
       continue;
     }
-    if (storedDigest) {
+    if (knownDigest) {
       pinned++;
       continue;
     }
