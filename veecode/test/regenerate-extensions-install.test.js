@@ -128,6 +128,16 @@ async function runPrestep(
     },
   });
   const out = path.join(data, 'extensions-install.yaml');
+  const storedDigests = digestColumns
+    ? await withClient(database, async client => {
+        const stored = await client.query(
+          'SELECT package_name, resolved_digest FROM marketplace_installations',
+        );
+        return Object.fromEntries(
+          stored.rows.map(row => [row.package_name, row.resolved_digest]),
+        );
+      })
+    : undefined;
   const run = {
     status: result.status,
     stdout: result.stdout,
@@ -136,11 +146,13 @@ async function runPrestep(
     skopeoCalls: fs.existsSync(calls)
       ? fs.readFileSync(calls, 'utf8').trim().split('\n')
       : [],
+    storedDigests,
   };
   t.diagnostic(`exit status: ${run.status}`);
   t.diagnostic(
     `skopeo calls (${run.skopeoCalls.length}): ${run.skopeoCalls.join(' | ') || 'none'}`,
   );
+  t.diagnostic(`stored digests: ${JSON.stringify(run.storedDigests)}`);
   t.diagnostic(`stdout:\n${run.stdout}`);
   t.diagnostic(`stderr:\n${run.stderr}`);
   return run;
@@ -290,5 +302,53 @@ describe('regenerate-extensions-install.js', () => {
 
     assertWritten(run);
     assert.equal(run.yaml, ALL_GOOD_YAML);
+  });
+
+  it('keeps the digest of a ref without a selector, stores it and calls no skopeo', async t => {
+    const ref = `oci://registry.test/veecode/digested@${digest(7)}`;
+    const run = await runPrestep(t, {
+      prefix: 'prestep_digest_ref_',
+      rows: [installation(ref)],
+    });
+
+    assert.deepEqual(run.skopeoCalls, []);
+    assertWritten(run);
+    assert.deepEqual(run.storedDigests, { [ref]: digest(7) });
+    assert.deepEqual(YAML.parse(run.yaml), {
+      plugins: [{ package: ref, disabled: false }],
+    });
+    assertLine(
+      run.stdout,
+      'VEECODE prestep: digest-pinned 1 of 1 selection(s) (0 non-OCI, 0 skipped, 0 disabled)',
+    );
+  });
+
+  it('resolves a tag ref without a selector and pins it as REPO@DIGEST', async t => {
+    const ref = 'oci://registry.test:5000/veecode/untagged:1.0.0';
+    const run = await runPrestep(t, {
+      prefix: 'prestep_tag_ref_',
+      rows: [installation(ref)],
+      registry: {
+        'docker://registry.test:5000/veecode/untagged:1.0.0': digest(8),
+      },
+    });
+
+    assertWritten(run);
+    assert.deepEqual(run.skopeoCalls, [
+      'inspect docker://registry.test:5000/veecode/untagged:1.0.0',
+    ]);
+    assert.deepEqual(YAML.parse(run.yaml), {
+      plugins: [
+        {
+          package: `oci://registry.test:5000/veecode/untagged@${digest(8)}`,
+          disabled: false,
+        },
+      ],
+    });
+    assert.deepEqual(run.storedDigests, { [ref]: digest(8) });
+    assertLine(
+      run.stdout,
+      'VEECODE prestep: digest-pinned 1 of 1 selection(s) (0 non-OCI, 0 skipped, 0 disabled)',
+    );
   });
 });
