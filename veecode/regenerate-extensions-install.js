@@ -243,13 +243,6 @@ function ociRepository(image) {
   return lastColon > lastSlash ? noDigest.slice(0, lastColon) : noDigest;
 }
 
-// The digest an OCI image already names (`repo@sha256:...`), in the installer's
-// digest grammar, or null when it names a tag.
-function addressedDigest(image) {
-  const match = /@((?:sha256|sha512|blake3):[^\s!@:]+)$/.exec(image);
-  return match ? match[1] : null;
-}
-
 // Rewrite an OCI ref so the image is addressed by digest instead of by tag.
 // The installer's digest() does `skopeo inspect` on exactly this string and
 // compares the result against dynamic-plugin-image.hash, so pinning the digest
@@ -564,25 +557,25 @@ async function main() {
   // ── T1.3: pin every enabled OCI selection to a digest ─────────────────────
   //
   // A restart must reinstall the SAME bytes, so the YAML never carries a bare
-  // tag for an enabled selection. Three shapes arrive here, with or without a
-  // `!selector`:
+  // tag for an enabled selection. Two shapes arrive here, with or without a
+  // `!selector`, and whether the ref names a tag or a digest:
   //
-  //   * the ref already names a digest (repo@sha256:...) -> keep it, no registry
-  //     call, and store it in resolved_digest like a resolved one.
   //   * resolved_digest already stored  -> reuse it, no registry call at all.
   //     This is what makes a restart deterministic: the tag is never consulted
   //     again, even if it moved.
   //   * digest still null (a row written before this change, or one the backend
   //     just created) -> resolve ONCE via skopeo, write it back, and use it from
   //     then on. Never materialise the bare tag as a fallback: that is precisely
-  //     the re-resolution this task exists to remove. A row whose digest cannot
-  //     be resolved is left out of the YAML with a warning, and the other
-  //     selections still regenerate.
+  //     the re-resolution this task exists to remove. A ref that already names
+  //     a digest is resolved too: the installer fails the whole install on one
+  //     missing image, so this call is the only check that the image exists.
+  //     A row whose digest cannot be resolved is left out of the YAML with a
+  //     warning, and the other selections still regenerate.
   //
   // Disabled selections are never resolved, because the installer does not
-  // pull them: they keep a digest their ref names or a stored one, and otherwise
-  // pass through as stored. Non-OCI selections (local ./dir, bare npm names)
-  // have no digest and pass through untouched.
+  // pull them: they keep a stored digest, and otherwise pass through as stored.
+  // Non-OCI selections (local ./dir, bare npm names) have no digest and pass
+  // through untouched.
   const effectiveRefs = new Map();
   const hasDigestColumn = columns.has('resolved_digest');
   const skipped = new Set();
@@ -591,25 +584,20 @@ async function main() {
   let disabled = 0;
   for (const row of rows) {
     const requested = row.requested_ref || row.package_name;
-    const oci = splitOciRef(requested);
-    if (!oci) {
+    if (!splitOciRef(requested)) {
       nonOci++; // not an OCI ref, nothing to pin
       continue;
     }
 
-    const addressed = addressedDigest(oci.image);
-    if (addressed && hasDigestColumn && row.resolved_digest !== addressed) {
-      await persistDigest(clientConfig, schema, row.package_name, addressed);
-    }
-    const knownDigest = addressed || (hasDigestColumn && row.resolved_digest);
-    if (knownDigest) {
-      effectiveRefs.set(row.package_name, refWithDigest(requested, knownDigest));
+    const storedDigest = hasDigestColumn && row.resolved_digest;
+    if (storedDigest) {
+      effectiveRefs.set(row.package_name, refWithDigest(requested, storedDigest));
     }
     if (row.disabled) {
       disabled++;
       continue;
     }
-    if (knownDigest) {
+    if (storedDigest) {
       pinned++;
       continue;
     }
