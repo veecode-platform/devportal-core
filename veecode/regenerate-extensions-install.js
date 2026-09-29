@@ -180,6 +180,8 @@ function pgClientConfig(connection, overrideDb) {
 // COLUMNS EXIST. They are discovered rather than assumed, because a database that
 // predates the migration must still be readable — selecting a missing column is a
 // hard SQL error, which would turn a rollback-era database into a refused boot.
+// `updated_at` is read the same way: it orders the rows that name one plugin
+// (keepOneRowPerPlugin).
 async function loadInstallations(clientConfig) {
   const client = new Client(clientConfig);
   await client.connect();
@@ -204,7 +206,7 @@ async function loadInstallations(clientConfig) {
     const columns = new Set(colRes.rows.map(r => r.column_name));
 
     const selected = ['config_yaml', 'package_name', 'disabled'];
-    for (const optional of ['requested_ref', 'resolved_digest']) {
+    for (const optional of ['requested_ref', 'resolved_digest', 'updated_at']) {
       if (columns.has(optional)) selected.push(optional);
     }
     const dataRes = await client.query(
@@ -402,6 +404,49 @@ function rowPackageRef(row) {
   return row.requested_ref || row.package_name;
 }
 
+const writtenAt = row =>
+  row.updated_at ? new Date(row.updated_at).getTime() : 0;
+
+// Which of two rows that name one plugin to keep: an enabled row beats a disabled
+// one, then the later `updated_at` wins. On a tie the row later in the query order
+// (package_name) wins, so the choice is the same on every boot.
+function preferredRow(current, candidate) {
+  if (Boolean(current.disabled) !== Boolean(candidate.disabled)) {
+    return current.disabled ? candidate : current;
+  }
+  return writtenAt(candidate) >= writtenAt(current) ? candidate : current;
+}
+
+// Rows are keyed by their full reference, so installing a newer reference of an
+// installed plugin leaves the old row next to the new one. The installer keys an
+// OCI plugin by its registry path and selector, without the tag or digest, and
+// fails the whole install on two enabled entries with that key
+// (merger.cjs.js entryKeyOf and recordEntryState, installer 0.4.1). Keep one OCI
+// row per key, the one preferredRow picks. Rows that are not OCI refs pass
+// through: normalizePluginKey only approximates the installer's npm key, and
+// strips at the last "@" of a tarball URL that the installer keeps whole. The
+// dropped rows are only left out of the generated YAML; nothing is written here.
+function keepOneRowPerPlugin(rows) {
+  const keys = rows.map(row => {
+    const ref = rowPackageRef(row);
+    return splitOciRef(ref) ? normalizePluginKey(ref) : null;
+  });
+  const preferred = new Map();
+  rows.forEach((row, i) => {
+    if (!keys[i]) return;
+    const current = preferred.get(keys[i]);
+    preferred.set(keys[i], current ? preferredRow(current, row) : row);
+  });
+  return rows.filter((row, i) => {
+    const kept = keys[i] && preferred.get(keys[i]);
+    if (!kept || kept === row) return true;
+    warn(
+      `dropping "${row.package_name}": "${kept.package_name}" names the same plugin and is preferred`,
+    );
+    return false;
+  });
+}
+
 // Reads the baked product face file so the regen can exclude any package it already
 // declares. Missing/unreadable/unparseable is NOT fatal here — this script must keep
 // working in local/dev contexts that never bake a face file. The hard guarantee
@@ -553,6 +598,10 @@ async function main() {
       );
     }
   }
+
+  // Same placement as the face dedup: a dropped row must not cost a registry
+  // call, and the summary below counts only the rows left.
+  rows = keepOneRowPerPlugin(rows);
 
   // ── T1.3: pin every enabled OCI selection to a digest ─────────────────────
   //
