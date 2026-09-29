@@ -421,11 +421,16 @@ function preferredRow(current, candidate) {
 // installed plugin leaves the old row next to the new one. The installer keys an
 // OCI plugin by its registry path and selector, without the tag or digest, and
 // fails the whole install on two enabled entries with that key
-// (merger.cjs.js entryKeyOf and recordEntryState, installer 0.4.1). Keep one row
-// per key, the one preferredRow picks. Only the generated YAML loses the others;
-// the table is never written here.
+// (merger.cjs.js entryKeyOf and recordEntryState, installer 0.4.1). Keep one OCI
+// row per key, the one preferredRow picks. Rows that are not OCI refs pass
+// through: normalizePluginKey only approximates the installer's npm key, and
+// strips at the last "@" of a tarball URL that the installer keeps whole. The
+// dropped rows are only left out of the generated YAML; nothing is written here.
 function keepOneRowPerPlugin(rows) {
-  const keys = rows.map(row => normalizePluginKey(rowPackageRef(row)));
+  const keys = rows.map(row => {
+    const ref = rowPackageRef(row);
+    return splitOciRef(ref) ? normalizePluginKey(ref) : null;
+  });
   const preferred = new Map();
   rows.forEach((row, i) => {
     if (!keys[i]) return;
@@ -436,7 +441,7 @@ function keepOneRowPerPlugin(rows) {
     const kept = keys[i] && preferred.get(keys[i]);
     if (!kept || kept === row) return true;
     warn(
-      `dropping "${row.package_name}": "${kept.package_name}" names the same plugin and is newer`,
+      `dropping "${row.package_name}": "${kept.package_name}" names the same plugin and is preferred`,
     );
     return false;
   });
