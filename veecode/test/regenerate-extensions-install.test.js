@@ -204,7 +204,7 @@ const versioned = (name, version) =>
   `oci://registry.test/veecode/${name}:${version}!${name}`;
 const at = minute => new Date(Date.UTC(2026, 8, 29, 12, minute));
 const dropping = (dropped, kept) =>
-  `VEECODE prestep: WARNING — dropping "${dropped}": "${kept}" names the same plugin and is newer`;
+  `VEECODE prestep: WARNING — dropping "${dropped}": "${kept}" names the same plugin and is preferred`;
 const pinned = (name, sha) =>
   `oci://registry.test/veecode/${name}@${sha}!${name}`;
 const image = name => `docker://registry.test/veecode/${name}:1.0.0`;
@@ -579,6 +579,70 @@ describe('regenerate-extensions-install.js', () => {
     });
     assertLine(run.stderr, dropping(shelved, parked));
     assertSummary(run, 1, { pinned: 0, nonOci: 0, skipped: 0, disabled: 1 });
+  });
+
+  it('keeps the row later in package_name order when updated_at is equal', async t => {
+    const first = versioned('tied', '1.0.0');
+    const second = versioned('tied', '2.0.0');
+    const run = await runPrestep(t, {
+      prefix: 'prestep_tied_',
+      rows: [
+        installation(first, { updated_at: at(10) }),
+        installation(second, { updated_at: at(10) }),
+      ],
+      registry: { 'docker://registry.test/veecode/tied:2.0.0': digest(1) },
+    });
+
+    assertWritten(run);
+    assert.deepEqual(run.skopeoCalls, [
+      'inspect docker://registry.test/veecode/tied:2.0.0',
+    ]);
+    assert.deepEqual(YAML.parse(run.yaml), {
+      plugins: [{ package: pinned('tied', digest(1)), disabled: false }],
+    });
+    assertLine(run.stderr, dropping(first, second));
+    assertSummary(run, 1, { pinned: 1, nonOci: 0, skipped: 0, disabled: 0 });
+  });
+
+  it('leaves tarball rows of different plugins alone even when both URLs contain an @scope', async t => {
+    const alpha = 'https://example.test/@acme/plugin-a-1.0.0.tgz';
+    const beta = 'https://example.test/@acme/plugin-b-1.0.0.tgz';
+    const run = await runPrestep(t, {
+      prefix: 'prestep_tarballs_',
+      rows: [installation(alpha), installation(beta)],
+    });
+
+    assertWritten(run);
+    assert.deepEqual(YAML.parse(run.yaml), {
+      plugins: [
+        { package: alpha, disabled: false },
+        { package: beta, disabled: false },
+      ],
+    });
+    assert.ok(!run.stderr.includes('dropping'), run.stderr);
+    assertSummary(run, 2, { pinned: 0, nonOci: 2, skipped: 0, disabled: 0 });
+  });
+
+  it('leaves two npm rows of one package to the installer', async t => {
+    const older = '@acme/plugin-x@1.0.0';
+    const newer = '@acme/plugin-x@1.1.0';
+    const run = await runPrestep(t, {
+      prefix: 'prestep_npm_versions_',
+      rows: [
+        installation(older, { updated_at: at(10) }),
+        installation(newer, { updated_at: at(20) }),
+      ],
+    });
+
+    assertWritten(run);
+    assert.deepEqual(YAML.parse(run.yaml), {
+      plugins: [
+        { package: older, disabled: false },
+        { package: newer, disabled: false },
+      ],
+    });
+    assert.ok(!run.stderr.includes('dropping'), run.stderr);
+    assertSummary(run, 2, { pinned: 0, nonOci: 2, skipped: 0, disabled: 0 });
   });
 
   it('keeps every row of an image whose rows select different plugins', async t => {
