@@ -200,6 +200,11 @@ function assertSummary(run, total, { pinned, nonOci, skipped, disabled }) {
 }
 
 const oci = name => `oci://registry.test/veecode/${name}:1.0.0!${name}`;
+const versioned = (name, version) =>
+  `oci://registry.test/veecode/${name}:${version}!${name}`;
+const at = minute => new Date(Date.UTC(2026, 8, 29, 12, minute));
+const dropping = (dropped, kept) =>
+  `VEECODE prestep: WARNING — dropping "${dropped}": "${kept}" names the same plugin and is newer`;
 const pinned = (name, sha) =>
   `oci://registry.test/veecode/${name}@${sha}!${name}`;
 const image = name => `docker://registry.test/veecode/${name}:1.0.0`;
@@ -473,6 +478,169 @@ describe('regenerate-extensions-install.js', () => {
       'VEECODE prestep: dedup against the product face file removed 1 selection(s)',
     );
     assertSummary(run, 2, { pinned: 1, nonOci: 1, skipped: 0, disabled: 0 });
+  });
+
+  it('keeps only the most recently written of the enabled rows that name one plugin', async t => {
+    const reinstalled = versioned('reinstalled', '1.0.0');
+    const superseded = versioned('reinstalled', '2.0.0');
+    const older = `oci://registry.test/veecode/updated@${digest(1)}!updated`;
+    const newer = `oci://registry.test/veecode/updated@${digest(2)}!updated`;
+    const run = await runPrestep(t, {
+      prefix: 'prestep_same_plugin_',
+      rows: [
+        installation(reinstalled, { updated_at: at(30) }),
+        installation(superseded, { updated_at: at(10) }),
+        installation(older, { updated_at: at(10) }),
+        installation(newer, { updated_at: at(20) }),
+        installation(oci('other'), { updated_at: at(5) }),
+        installation('./dynamic-plugins/dist/local-plugin-dynamic'),
+      ],
+      registry: {
+        [image('reinstalled')]: digest(3),
+        [`docker://registry.test/veecode/updated@${digest(2)}`]: digest(2),
+        [image('other')]: digest(4),
+      },
+    });
+
+    assertWritten(run);
+    assert.deepEqual([...run.skopeoCalls].sort(), [
+      `inspect ${image('other')}`,
+      `inspect ${image('reinstalled')}`,
+      `inspect docker://registry.test/veecode/updated@${digest(2)}`,
+    ]);
+    assert.deepEqual(YAML.parse(run.yaml), {
+      plugins: [
+        {
+          package: './dynamic-plugins/dist/local-plugin-dynamic',
+          disabled: false,
+        },
+        { package: pinned('other', digest(4)), disabled: false },
+        { package: pinned('reinstalled', digest(3)), disabled: false },
+        { package: newer, disabled: false },
+      ],
+    });
+    assertLine(run.stderr, dropping(superseded, reinstalled));
+    assertLine(run.stderr, dropping(older, newer));
+    assert.equal(run.storedDigests[superseded], null);
+    assert.equal(run.storedDigests[older], null);
+    assertSummary(run, 4, { pinned: 3, nonOci: 1, skipped: 0, disabled: 0 });
+  });
+
+  it('keeps an enabled row over a newer disabled row of the same plugin', async t => {
+    const retained = versioned('retained', '1.0.0');
+    const retiredNewer = versioned('retained', '2.0.0');
+    const restoredOlder = versioned('restored', '1.0.0');
+    const restored = versioned('restored', '2.0.0');
+    const run = await runPrestep(t, {
+      prefix: 'prestep_enabled_wins_',
+      rows: [
+        installation(retained, { updated_at: at(10) }),
+        installation(retiredNewer, { disabled: true, updated_at: at(20) }),
+        installation(restoredOlder, { disabled: true, updated_at: at(20) }),
+        installation(restored, { updated_at: at(10) }),
+      ],
+      registry: {
+        [image('retained')]: digest(1),
+        'docker://registry.test/veecode/restored:2.0.0': digest(2),
+      },
+    });
+
+    assertWritten(run);
+    assert.deepEqual([...run.skopeoCalls].sort(), [
+      'inspect docker://registry.test/veecode/restored:2.0.0',
+      `inspect ${image('retained')}`,
+    ]);
+    assert.deepEqual(YAML.parse(run.yaml), {
+      plugins: [
+        { package: pinned('restored', digest(2)), disabled: false },
+        { package: pinned('retained', digest(1)), disabled: false },
+      ],
+    });
+    assertLine(run.stderr, dropping(retiredNewer, retained));
+    assertLine(run.stderr, dropping(restoredOlder, restored));
+    assertSummary(run, 2, { pinned: 2, nonOci: 0, skipped: 0, disabled: 0 });
+  });
+
+  it('keeps the newer of two disabled rows that name one plugin', async t => {
+    const parked = versioned('parked', '1.0.0');
+    const shelved = versioned('parked', '2.0.0');
+    const run = await runPrestep(t, {
+      prefix: 'prestep_disabled_pair_',
+      rows: [
+        installation(parked, { disabled: true, updated_at: at(20) }),
+        installation(shelved, { disabled: true, updated_at: at(10) }),
+      ],
+    });
+
+    assert.deepEqual(run.skopeoCalls, []);
+    assertWritten(run);
+    assert.deepEqual(YAML.parse(run.yaml), {
+      plugins: [{ package: parked, disabled: true }],
+    });
+    assertLine(run.stderr, dropping(shelved, parked));
+    assertSummary(run, 1, { pinned: 0, nonOci: 0, skipped: 0, disabled: 1 });
+  });
+
+  it('keeps every row of an image whose rows select different plugins', async t => {
+    const alpha = 'oci://registry.test/veecode/bundle:1.0.0!alpha';
+    const beta = 'oci://registry.test/veecode/bundle:1.0.0!beta';
+    const run = await runPrestep(t, {
+      prefix: 'prestep_selectors_',
+      rows: [installation(alpha), installation(beta)],
+      registry: { 'docker://registry.test/veecode/bundle:1.0.0': digest(1) },
+    });
+
+    assertWritten(run);
+    assert.deepEqual(YAML.parse(run.yaml), {
+      plugins: [
+        {
+          package: `oci://registry.test/veecode/bundle@${digest(1)}!alpha`,
+          disabled: false,
+        },
+        {
+          package: `oci://registry.test/veecode/bundle@${digest(1)}!beta`,
+          disabled: false,
+        },
+      ],
+    });
+    assert.ok(!run.stderr.includes('dropping'), run.stderr);
+    assertSummary(run, 2, { pinned: 2, nonOci: 0, skipped: 0, disabled: 0 });
+  });
+
+  it('counts only the rows left after the face dedup and the same-plugin dedup', async t => {
+    const faced = oci('faced');
+    const current = versioned('versioned', '2.0.0');
+    const previous = versioned('versioned', '1.0.0');
+    const run = await runPrestep(t, {
+      prefix: 'prestep_both_dedups_',
+      rows: [
+        installation(faced),
+        installation(previous, { updated_at: at(10) }),
+        installation(current, { updated_at: at(20) }),
+        installation(oci('kept')),
+        installation(oci('lost')),
+        installation(oci('parked'), { disabled: true }),
+        installation('./dynamic-plugins/dist/local-plugin-dynamic'),
+      ],
+      registry: {
+        [image('kept')]: digest(1),
+        'docker://registry.test/veecode/versioned:2.0.0': digest(2),
+      },
+      faceRefs: [pinned('faced', digest(4))],
+    });
+
+    assertWritten(run);
+    assert.deepEqual([...run.skopeoCalls].sort(), [
+      `inspect ${image('kept')}`,
+      `inspect ${image('lost')}`,
+      'inspect docker://registry.test/veecode/versioned:2.0.0',
+    ]);
+    assertLine(
+      run.stdout,
+      'VEECODE prestep: dedup against the product face file removed 1 selection(s)',
+    );
+    assertLine(run.stderr, dropping(previous, current));
+    assertSummary(run, 5, { pinned: 2, nonOci: 1, skipped: 1, disabled: 1 });
   });
 
   it('keeps the registry port when it pins a ref that has a selector', async t => {
