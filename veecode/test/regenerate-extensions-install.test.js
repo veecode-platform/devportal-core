@@ -10,6 +10,7 @@ const YAML = require('yaml');
 const { Client } = require('pg');
 
 const SCRIPT = path.join(__dirname, '..', 'regenerate-extensions-install.js');
+const { normalizePluginKey } = require(SCRIPT);
 
 const PG = {
   host: process.env.PGHOST || '127.0.0.1',
@@ -350,5 +351,11 @@ describe('regenerate-extensions-install.js', () => {
       run.stdout,
       'VEECODE prestep: digest-pinned 1 of 1 selection(s) (0 non-OCI, 0 skipped, 0 disabled)',
     );
+  });
+
+  it('gives a ref without a selector the same dedup key pinned or not', () => {
+    const repository = 'oci://registry.test:5000/veecode/untagged';
+    assert.equal(normalizePluginKey(`${repository}:1.0.0`), repository);
+    assert.equal(normalizePluginKey(`${repository}@${digest(8)}`), repository);
   });
 });
