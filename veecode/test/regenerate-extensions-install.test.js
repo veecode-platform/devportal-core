@@ -645,6 +645,29 @@ describe('regenerate-extensions-install.js', () => {
     assertSummary(run, 2, { pinned: 0, nonOci: 2, skipped: 0, disabled: 0 });
   });
 
+  it('leaves two Git rows of one repository to the installer', async t => {
+    const first = 'github:acme/plugin-x#v1';
+    const second = 'github:acme/plugin-x#v2';
+    const run = await runPrestep(t, {
+      prefix: 'prestep_git_refs_',
+      rows: [
+        installation(first, { updated_at: at(10) }),
+        installation(second, { updated_at: at(20) }),
+      ],
+    });
+
+    assert.deepEqual(run.skopeoCalls, []);
+    assertWritten(run);
+    assert.deepEqual(YAML.parse(run.yaml), {
+      plugins: [
+        { package: first, disabled: false },
+        { package: second, disabled: false },
+      ],
+    });
+    assert.ok(!run.stderr.includes('dropping'), run.stderr);
+    assertSummary(run, 2, { pinned: 0, nonOci: 2, skipped: 0, disabled: 0 });
+  });
+
   it('keeps every row of an image whose rows select different plugins', async t => {
     const alpha = 'oci://registry.test/veecode/bundle:1.0.0!alpha';
     const beta = 'oci://registry.test/veecode/bundle:1.0.0!beta';
