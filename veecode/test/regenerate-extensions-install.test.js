@@ -82,7 +82,7 @@ async function seed(database, { digestColumns, rows }) {
 
 async function preparePrestep(
   t,
-  { prefix, digestColumns = true, rows, registry = {} },
+  { prefix, digestColumns = true, rows, registry = {}, faceRefs = [] },
 ) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'prestep-test-'));
   const database = `${prefix}extensions`;
@@ -112,7 +112,10 @@ async function preparePrestep(
     }),
   );
   const face = path.join(dir, 'dynamic-plugins.veecode.yaml');
-  fs.writeFileSync(face, 'plugins: []\n');
+  fs.writeFileSync(
+    face,
+    YAML.stringify({ plugins: faceRefs.map(ref => ({ package: ref })) }),
+  );
   const calls = path.join(dir, 'skopeo-calls');
   const data = path.join(dir, 'data');
   const out = path.join(data, 'extensions-install.yaml');
@@ -429,6 +432,47 @@ describe('regenerate-extensions-install.js', () => {
       'VEECODE prestep: WARNING — skipping "oci://registry.test/veecode/lost:1.0.0": could not resolve a digest for "oci://registry.test/veecode/lost:1.0.0"',
     );
     assertSummary(run, 5, { pinned: 1, nonOci: 1, skipped: 1, disabled: 2 });
+  });
+
+  it('counts only the rows left after the product face dedup', async t => {
+    const faced = oci('faced');
+    const run = await runPrestep(t, {
+      prefix: 'prestep_face_dedup_',
+      rows: [
+        installation(faced),
+        installation(oci('kept')),
+        installation('./dynamic-plugins/dist/local-plugin-dynamic'),
+      ],
+      registry: { [image('kept')]: digest(1) },
+      faceRefs: [pinned('faced', digest(4))],
+    });
+
+    assertWritten(run);
+    assert.deepEqual(run.skopeoCalls, [`inspect ${image('kept')}`]);
+    assert.deepEqual(YAML.parse(run.yaml), {
+      plugins: [
+        {
+          package: './dynamic-plugins/dist/local-plugin-dynamic',
+          disabled: false,
+        },
+        { package: pinned('kept', digest(1)), disabled: false },
+      ],
+    });
+    assert.ok(
+      run.stdout
+        .split('\n')
+        .some(
+          line =>
+            line.startsWith(`VEECODE prestep: excluding "${faced}" from `) &&
+            line.endsWith(': declared in product face file'),
+        ),
+      `no exclusion line for the face-owned row in\n${run.stdout}`,
+    );
+    assertLine(
+      run.stdout,
+      'VEECODE prestep: dedup against the product face file removed 1 selection(s)',
+    );
+    assertSummary(run, 2, { pinned: 1, nonOci: 1, skipped: 0, disabled: 0 });
   });
 
   it('keeps the registry port when it pins a ref that has a selector', async t => {
