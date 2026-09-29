@@ -39,10 +39,13 @@
  *     named wrapper — for diff-readability against the 2.x source — but it
  *     is now unconditionally soft: warn and return, never exit non-zero.
  *     Every condition that used to be able to abort the boot now always
- *     takes the "leave the existing YAML in place" path.
- *   - Digest-pinning (skopeo) kept unchanged: the fork's runner image
- *     installs skopeo (see build/containerfiles/Containerfile, runner
- *     stage), so this sub-feature ports as-is with no substitution.
+ *     takes the "leave the existing YAML in place" path, except an
+ *     unresolvable digest, which skips only its own row (next item).
+ *   - Digest-pinning (skopeo) kept: the fork's runner image installs skopeo
+ *     (see build/containerfiles/Containerfile, runner stage), so this
+ *     sub-feature ports with no substitution. Unlike 2.x, a row whose digest
+ *     cannot be resolved is skipped instead of abandoning the regeneration,
+ *     and disabled rows are never resolved.
  *
  * Config is read with the same --config files the backend gets (passed as
  * args), via @backstage/config-loader, so ${VAR:-default} and the
@@ -518,11 +521,9 @@ async function main() {
   );
 
   // OD1 phase A: exclude face-owned rows BEFORE the digest-resolution loop below,
-  // not after. An unresolvable ref for a package the face already declares must
-  // never bail() out of the whole regen (see the digest loop's "refusing to
-  // materialise a bare tag" abort) — it is being dropped anyway, so it should
-  // never reach that loop in the first place. See rowPackageRef() /
-  // loadFacePackageKeys() / normalizePluginKey() above.
+  // not after. A package the face already declares is being dropped anyway, so
+  // it must never cost a registry call or a skip warning in that loop. See
+  // rowPackageRef() / loadFacePackageKeys() / normalizePluginKey() above.
   const facePackageKeys = loadFacePackageKeys();
   if (facePackageKeys) {
     const beforeCount = rows.length;
@@ -544,10 +545,10 @@ async function main() {
     }
   }
 
-  // ── T1.3: pin every OCI selection to a digest ─────────────────────────────
+  // ── T1.3: pin every enabled OCI selection to a digest ─────────────────────
   //
   // A restart must reinstall the SAME bytes, so the YAML never carries a bare
-  // tag. Two shapes arrive here:
+  // tag for an enabled selection. Two shapes arrive here:
   //
   //   * resolved_digest already stored  -> reuse it, no registry call at all.
   //     This is what makes a restart deterministic: the tag is never consulted
@@ -555,35 +556,49 @@ async function main() {
   //   * digest still null (a row written before this change, or one the backend
   //     just created) -> resolve ONCE via skopeo, write it back, and use it from
   //     then on. Never materialise the bare tag as a fallback: that is precisely
-  //     the re-resolution this task exists to remove.
+  //     the re-resolution this task exists to remove. A row whose digest cannot
+  //     be resolved is left out of the YAML with a warning, and the other
+  //     selections still regenerate.
   //
-  // Non-OCI selections (local ./dir, bare npm names) have no digest and pass
-  // through untouched.
-  //
-  // NOTE (fork-specific, not in 2.x): an unresolvable digest still calls
-  // bail() and returns below, which now means "warn and abandon regeneration
-  // for this boot" rather than "abort the boot" — the existing (possibly
-  // stale) extensions-install.yaml is left in place. Flagged for Gio per Q4;
-  // not changed here since it predates the fail-closed trim and is not
-  // itself a fail-closed instance.
+  // Disabled selections are never resolved, because the installer does not
+  // pull them: they keep a stored digest when they have one and otherwise pass
+  // through as stored. Non-OCI selections (local ./dir, bare npm names) have no
+  // digest and pass through untouched.
   const effectiveRefs = new Map();
   const hasDigestColumn = columns.has('resolved_digest');
+  const skipped = new Set();
+  let pinned = 0;
+  let nonOci = 0;
+  let disabled = 0;
   for (const row of rows) {
     const requested = row.requested_ref || row.package_name;
-    if (!splitOciRef(requested)) continue; // not an OCI ref, nothing to pin
+    if (!splitOciRef(requested)) {
+      nonOci++; // not an OCI ref, nothing to pin
+      continue;
+    }
 
-    if (hasDigestColumn && row.resolved_digest) {
-      effectiveRefs.set(row.package_name, refWithDigest(requested, row.resolved_digest));
+    const storedDigest = hasDigestColumn && row.resolved_digest;
+    if (storedDigest) {
+      effectiveRefs.set(row.package_name, refWithDigest(requested, storedDigest));
+    }
+    if (row.disabled) {
+      disabled++;
+      continue;
+    }
+    if (storedDigest) {
+      pinned++;
       continue;
     }
 
     const digest = resolveDigest(requested);
     if (!digest) {
-      bail(
-        `could not resolve a digest for "${requested}"; refusing to materialise a bare tag`,
+      warn(
+        `skipping "${row.package_name}": could not resolve a digest for "${requested}"`,
       );
-      return;
+      skipped.add(row);
+      continue;
     }
+    pinned++;
     effectiveRefs.set(row.package_name, refWithDigest(requested, digest));
     if (hasDigestColumn) {
       await persistDigest(clientConfig, schema, row.package_name, digest);
@@ -594,14 +609,15 @@ async function main() {
     }
   }
   log(
-    `digest-pinned ${effectiveRefs.size} of ${rows.length} selection(s) (${
-      rows.length - effectiveRefs.size
-    } non-OCI)`,
+    `digest-pinned ${pinned} of ${rows.length} selection(s) (${nonOci} non-OCI, ${skipped.size} skipped, ${disabled} disabled)`,
   );
 
   // Face-owned rows were already excluded above, before digest resolution —
   // rowsToPlugins never sees them.
-  const plugins = rowsToPlugins(rows, effectiveRefs);
+  const plugins = rowsToPlugins(
+    rows.filter(row => !skipped.has(row)),
+    effectiveRefs,
+  );
 
   try {
     // 2.x's entrypoint guarantees DEVPORTAL_DB_PATH exists before this script
