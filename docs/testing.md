@@ -7,8 +7,8 @@ It deliberately does **not** re-explain _which_ layer to choose — that already
 
 - [`docs/e2e-tests/layer-migration-matrix.md`](e2e-tests/layer-migration-matrix.md) —
   layer definitions and the migration rule of thumb.
-- The `test-placement` skill in
-  [redhat-developer/rhdh-skill](https://github.com/redhat-developer/rhdh-skill) —
+- The `rhdh-test-placement` skill in
+  [redhat-developer/rhdh-skills](https://github.com/redhat-developer/rhdh-skills) —
   interactive routing across `rhdh`, `rhdh-plugins` and `rhdh-plugin-export-overlays`.
 
 ## Start from the shape of your change
