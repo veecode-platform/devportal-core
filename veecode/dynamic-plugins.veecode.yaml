@@ -372,8 +372,8 @@ plugins:
                 priority: 55
                 props:
                   pollingIntervalMs: 30000
-# VeeCode marketplace frontend at /marketplace (bs_1.49.4 — the FE selector
-# genuinely differs by Backstage version, unlike the backend).
+# VeeCode marketplace frontend at /marketplace: the 0.2.0 per-plugin artifact,
+# built for Backstage 1.52.0 (tag bs_1.52.0__0.2.0).
 - package: oci://quay.io/veecode/devportal-marketplace-frontend-dynamic@sha256:83c78403a24a800d425c10565f796d33c2ceab6c5096d343533628bfd0c7426d!devportal-marketplace-frontend-dynamic # was :bs_1.52.0__0.2.0
   disabled: false
   pluginConfig:
