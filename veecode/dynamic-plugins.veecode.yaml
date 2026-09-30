@@ -356,10 +356,10 @@ plugins:
 - package: ./dynamic-plugins/dist/red-hat-developer-hub-backstage-plugin-catalog-backend-module-extensions-dynamic
   disabled: false
 # VeeCode marketplace backend (byte-identical across tags; owns /api/extensions/*).
-- package: oci://quay.io/veecode/marketplace@sha256:d98b28a1f8a453fe697bbc50780ae92e0c54eb7f3c789b0d184728d5b3c07a9e!devportal-marketplace-backend # was :bs_1.53.0
+- package: oci://quay.io/veecode/devportal-marketplace-backend@sha256:fe274bae36be4ca70650a2f36802772b82ad47f4a3eac4d6702619c980dbf489!devportal-marketplace-backend # was :bs_1.52.0__0.2.0
   disabled: false
 # Pending-changes (header button for the batch install/removal UX).
-- package: oci://quay.io/veecode/marketplace@sha256:d98b28a1f8a453fe697bbc50780ae92e0c54eb7f3c789b0d184728d5b3c07a9e!devportal-pending-changes-dynamic # was :bs_1.53.0
+- package: oci://quay.io/veecode/devportal-pending-changes-dynamic@sha256:cdffd11f61b7c7feb1980c040165485b7646e797652e3ae55f64c9150729d406!devportal-pending-changes-dynamic # was :bs_1.52.0__0.2.0
   disabled: false
   pluginConfig:
     dynamicPlugins:
@@ -374,7 +374,7 @@ plugins:
                   pollingIntervalMs: 30000
 # VeeCode marketplace frontend at /marketplace (bs_1.49.4 — the FE selector
 # genuinely differs by Backstage version, unlike the backend).
-- package: oci://quay.io/veecode/marketplace@sha256:e30f090acb9b4d613f94ea11abc2cb0501c306be7c0bc7b83774e4ae62fbc3f0!devportal-marketplace-frontend-dynamic # was :bs_1.49.4
+- package: oci://quay.io/veecode/devportal-marketplace-frontend-dynamic@sha256:83c78403a24a800d425c10565f796d33c2ceab6c5096d343533628bfd0c7426d!devportal-marketplace-frontend-dynamic # was :bs_1.52.0__0.2.0
   disabled: false
   pluginConfig:
     dynamicPlugins:
