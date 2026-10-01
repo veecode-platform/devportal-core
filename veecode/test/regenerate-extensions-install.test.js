@@ -883,7 +883,7 @@ describe('regenerate-extensions-install.js', () => {
     assertSummary(run, 2, { pinned: 2, nonOci: 0, skipped: 0, disabled: 0 });
   });
 
-  it('preserves an ambiguous selector-less row without dropping distinct selectors', async t => {
+  it('omits an ambiguous selector-less row while keeping distinct selectors', async t => {
     const repository = 'oci://registry.test/veecode/bundle';
     const scenarios = [
       {
@@ -901,6 +901,7 @@ describe('regenerate-extensions-install.js', () => {
         rootUpdated: 10,
         alphaUpdated: 20,
         betaUpdated: 30,
+        rootDisabled: true,
       },
       {
         name: 'selector-less row last, newest',
@@ -935,7 +936,10 @@ describe('regenerate-extensions-install.js', () => {
       const run = await runPrestep(t, {
         prefix: `prestep_bridge_${index}_`,
         rows: [
-          installation(rootRef, { updated_at: at(scenario.rootUpdated) }),
+          installation(rootRef, {
+            disabled: scenario.rootDisabled,
+            updated_at: at(scenario.rootUpdated),
+          }),
           installation(alphaRef, { updated_at: at(scenario.alphaUpdated) }),
           installation(betaRef, { updated_at: at(scenario.betaUpdated) }),
         ],
@@ -945,12 +949,15 @@ describe('regenerate-extensions-install.js', () => {
 
       const packages = YAML.parse(run.yaml).plugins.map(plugin => plugin.package);
       const expectedPackages = [
-        `${repository}@${digest(1)}`,
         `${repository}@${digest(1)}!alpha`,
         `${repository}@${digest(1)}!beta`,
       ].sort();
       const namesAmbiguity =
         run.stderr.toLowerCase().includes('ambiguous') &&
+        run.stderr.includes('omitting ambiguous selector-less row') &&
+        run.stderr.includes(
+          'installer rejects a path-less reference to a multi-plugin image',
+        ) &&
         refs.every(ref => run.stderr.includes(`"${ref}"`));
       if (
         JSON.stringify(packages.sort()) !== JSON.stringify(expectedPackages) ||
@@ -1013,6 +1020,42 @@ describe('regenerate-extensions-install.js', () => {
     for (const ref of [rowRef, alphaFace, betaFace]) {
       assert.ok(run.stderr.includes(`"${ref}"`), run.stderr);
     }
+  });
+
+  it('omits an ambiguous selector-less non-face row after face matching', async t => {
+    const repository = 'oci://registry.test/veecode/bundle';
+    const rootRef = `${repository}:1.0.0`;
+    const alphaRef = `${repository}:2.0.0!market-alpha`;
+    const betaRef = `${repository}:3.0.0!market-beta`;
+    const alphaFace = `${repository}@${digest(4)}!face-alpha`;
+    const betaFace = `${repository}@${digest(5)}!face-beta`;
+    const refs = [rootRef, alphaRef, betaRef];
+    const registry = Object.fromEntries(
+      refs.map(ref => [
+        `docker://${ref.slice('oci://'.length).split('!')[0]}`,
+        digest(6),
+      ]),
+    );
+    const run = await runPrestep(t, {
+      prefix: 'prestep_face_selectorless_ambiguous_marketplace_',
+      rows: refs.map((ref, index) =>
+        installation(ref, { updated_at: at(index + 1) }),
+      ),
+      registry,
+      faceRefs: [alphaFace, betaFace],
+    });
+
+    assertWritten(run);
+    const packages = YAML.parse(run.yaml).plugins.map(plugin => plugin.package);
+    assert.deepEqual(packages.sort(), [
+      `${repository}@${digest(6)}!market-alpha`,
+      `${repository}@${digest(6)}!market-beta`,
+    ].sort());
+    for (const ref of [rootRef, alphaRef, betaRef]) {
+      assert.ok(run.stderr.includes(`"${ref}"`), run.stderr);
+    }
+    assert.ok(run.stderr.includes(`"${alphaFace}"`), run.stderr);
+    assert.ok(run.stderr.includes(`"${betaFace}"`), run.stderr);
   });
 
   it('ignores a disabled Marketplace backend OCI face row', async t => {

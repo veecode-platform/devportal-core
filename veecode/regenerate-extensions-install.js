@@ -425,9 +425,11 @@ function preferredRow(current, candidate) {
 // duplicates before resolution. Do not chain samePlugin comparisons here: its
 // selector-less match can bridge two distinct selectors. Group by repository
 // and exact selector, joining selector-less rows only when there is one
-// selector. Non-OCI rows pass through because normalizePluginKey only
-// approximates the installer's npm key and strips at the last "@" of a tarball
-// URL that the installer keeps whole.
+// selector. Omit them when multiple selectors could match because the
+// installer rejects a path-less reference to a multi-plugin image. Non-OCI
+// rows pass through because normalizePluginKey only approximates the
+// installer's npm key and strips at the last "@" of a tarball URL that the
+// installer keeps whole.
 function keepOneRowPerPlugin(rows) {
   const byRepository = new Map();
   for (const row of rows) {
@@ -470,11 +472,13 @@ function keepOneRowPerPlugin(rows) {
 
   for (const [repository, group] of byRepository) {
     if (group.bySelector.size > 1) {
-      for (const row of group.selectorless) kept.add(row);
       if (group.selectorless.length > 0) {
         const selectorRows = [...group.bySelector.values()].flat();
         warn(
-          `keeping ambiguous selector-less row(s) ${formatNames(group.selectorless)} for OCI repository "${repository}"; selector-bearing row(s) ${formatNames(selectorRows)} name distinct plugins`,
+          `omitting ambiguous selector-less row(s) ${formatNames(group.selectorless)} ` +
+            `for OCI repository "${repository}"; these rows match selector-bearing ` +
+            `row(s) ${formatNames(selectorRows)} for distinct plugins. The installer ` +
+            'rejects a path-less reference to a multi-plugin image',
         );
       }
       for (const selectorRows of group.bySelector.values()) {
