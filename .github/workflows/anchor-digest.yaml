@@ -40,7 +40,7 @@ jobs:
           SRC="docker://quay.io/veecode/${IMAGE}@${DIGEST}"
           DST="docker://quay.io/veecode/${IMAGE}:${TAG}"
           echo "Anchoring ${SRC} -> ${DST}"
-          skopeo copy --all \
+          skopeo copy --all --preserve-digests \
             --dest-creds "${QUAY_USERNAME}:${QUAY_TOKEN}" \
             "$SRC" "$DST"
           RESOLVED=$(skopeo inspect --format '{{.Digest}}' "$DST")

@@ -325,7 +325,7 @@ jobs:
             # --all: copy every instance of a manifest list, not just the
             # arch the runner would default to — otherwise the anchor tag
             # would protect a different digest than the one being pinned.
-            skopeo copy --all "docker://${image}@${digest}" "docker://${image}:${anchor_tag}"
+            skopeo copy --all --preserve-digests "docker://${image}@${digest}" "docker://${image}:${anchor_tag}"
             echo "::endgroup::"
             echo "Anchored ${image}@${digest} -> ${image}:${anchor_tag}"
           done
