@@ -73,7 +73,7 @@ if [ ! -f "$DPDY_FILE" ] || [ ! -d "$PACKAGES_DIR" ]; then
   echo "catalog index is missing dynamic-plugins.default.yaml or extensions/packages"
   exit 1
 fi
-mapfile -t DPDY_PACKAGES < <(yq -er '.plugins[]?.package // empty' "$DPDY_FILE") || {
+mapfile -t DPDY_PACKAGES < <(yq -r '.plugins[].package' "$DPDY_FILE") || {
   echo "cannot parse catalog index dynamic-plugins.default.yaml"
   exit 1
 }

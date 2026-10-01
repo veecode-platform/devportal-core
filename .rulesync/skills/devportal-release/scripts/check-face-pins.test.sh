@@ -68,7 +68,7 @@ write_face() {
   } > "$FIXTURE_ROOT/face.yaml"
 }
 run_gate() {
-  PATH="$FIXTURE_ROOT/bin:$PATH" \
+  env PATH="$FIXTURE_ROOT/bin:$PATH" \
     FIXTURE_ROOT="$FIXTURE_ROOT" \
     FACE_FILE="$FIXTURE_ROOT/face.yaml" \
     CATALOG_INDEX_IMAGE=quay.io/veecode/plugin-catalog-index:test \
