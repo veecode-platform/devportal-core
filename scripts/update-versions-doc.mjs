@@ -73,8 +73,6 @@ async function getFileFromGithub(repository, branch, filePath) {
 
 }
 
-// generate the table for the packages and versions based on the provided package.json
-// only packages in the packageNames array will be included
 function getLockfileVersion(lockfile, packageName) {
   const lines = lockfile.split(/\r?\n/);
   const selectorPrefix = `${packageName}@`;
@@ -100,6 +98,8 @@ function getLockfileVersion(lockfile, packageName) {
   return undefined;
 }
 
+// generate the table for the packages and versions based on the provided package.json
+// only packages in the packageNames array will be included
 async function generateTable(packageJson, packageNames, lockfile) {
   let table = `
 | **Package**                    | **Version** |

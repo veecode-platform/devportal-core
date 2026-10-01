@@ -3,6 +3,8 @@ set -euo pipefail
 
 usage() {
   printf 'Usage: %s <image-repository> <candidate-tag> <final-tag>\n' "${0##*/}" >&2
+  printf 'The final-tag check and copy are not atomic; enable registry-side tag immutability to guard this race.\n' >&2
+  printf 'Log in to the registry with push rights before running this command.\n' >&2
 }
 
 fail() {
@@ -55,7 +57,7 @@ if ! grep -Eqi 'manifest unknown|name unknown|StatusCode: 404|status code: 404' 
   fail "cannot confirm that final tag is absent: $final_ref"
 fi
 
-"$SKOPEO" copy --all \
+"$SKOPEO" copy --all --preserve-digests \
   --src-tls-verify="$SKOPEO_TLS_VERIFY" \
   --dest-tls-verify="$SKOPEO_TLS_VERIFY" \
   "$candidate_digest_transport" \

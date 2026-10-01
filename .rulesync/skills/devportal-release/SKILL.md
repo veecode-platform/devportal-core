@@ -86,7 +86,9 @@ After the release gate approves the candidate and the guides and support page ar
 scripts/promote-image.sh docker.io/veecode/devportal 3.0.0-rc.N 3.0.0
 ```
 
-The script refuses an existing final tag and a candidate that is not a multi-architecture manifest list. It copies by the candidate digest with `skopeo copy --all`, checks that the final tag resolves to the same manifest-list digest, and prints both digests.
+The script refuses an existing final tag and a candidate that is not a multi-architecture manifest list. It copies by the candidate digest with `skopeo copy --all --preserve-digests`, checks that the final tag resolves to the same manifest-list digest, and prints both digests.
+
+Log in to the registry with push rights before you run the script. The final-tag existence check and copy are separate operations, so the script cannot close that race. Registry-side tag immutability guards against a concurrent writer replacing the tag.
 
 ## 3. Release the chart
 
