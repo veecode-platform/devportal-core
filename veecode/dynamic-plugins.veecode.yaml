@@ -17,11 +17,6 @@
 # template syntax here; it will not be expanded and will be passed through
 # as a literal string.
 #
-# Refs are pinned by DIGEST where OCI (this file IS the canonical version
-# source for VeeCode's own plugins — homepage/theme/marketplace — since no
-# upstream CATALOG_INDEX_IMAGE covers them), or by exact npm version, or by
-# `./dynamic-plugins/dist/...` local path (resolved from the installer's
-# CWD, `/opt/app-root/src`, which is this image's own unpack directory).
 #
 # Customer override model (installer level 1 overrides level 0 per-package,
 # `install-dynamic-plugins.py:643-658`):
@@ -50,7 +45,7 @@ plugins:
 #    home never registers — it would be a no-op anyway. The recorder
 #    is provided by the veecode-homepage plugin itself (below).
 # Kept in full (disabled) as the one-line revert.
-- package: ./dynamic-plugins/dist/red-hat-developer-hub-backstage-plugin-dynamic-home-page
+- package: oci://quay.io/veecode/red-hat-developer-hub-backstage-plugin-dynamic-home-page@sha256:5fb22d07cb78b7bf4bd7fa5b4469aee089e292cd96eefd200197673a5fcd6b1c!red-hat-developer-hub-backstage-plugin-dynamic-home-page # was :bs_1.52.0__1.13.4
   disabled: true
   pluginConfig:
     dynamicPlugins:
@@ -140,7 +135,7 @@ plugins:
               importName: VisitListener
 
 # ── Header (rich default; owns default.admin sidebar group) ───────────
-- package: ./dynamic-plugins/dist/red-hat-developer-hub-backstage-plugin-global-header
+- package: oci://quay.io/veecode/red-hat-developer-hub-backstage-plugin-global-header@sha256:2a622b6a8c30584eb1023869d7387f1ec09309f62ef3621b94a20fb5d81de1a1!red-hat-developer-hub-backstage-plugin-global-header # was :bs_1.52.0__1.21.6
   disabled: false
   pluginConfig:
     dynamicPlugins:
@@ -277,7 +272,7 @@ plugins:
                 priority: 10
 
 # ── RBAC (frontend UI only; /rbac under Administration; enforcement OFF) ─
-- package: ./dynamic-plugins/dist/backstage-community-plugin-rbac
+- package: oci://quay.io/veecode/backstage-community-plugin-rbac@sha256:36e9f606223dd6f2e479c3a904d28dfbec7afdcbbb8e2f18cd1d1edbf7f238e6!backstage-community-plugin-rbac # was :bs_1.52.0__1.52.4
   disabled: false
   pluginConfig:
     dynamicPlugins:
@@ -353,7 +348,7 @@ plugins:
 
 # ── Marketplace / Extensions (M3 loop) ────────────────────────────────
 # Catalog provider that ingests the extracted index entities.
-- package: ./dynamic-plugins/dist/red-hat-developer-hub-backstage-plugin-catalog-backend-module-extensions-dynamic
+- package: oci://quay.io/veecode/red-hat-developer-hub-backstage-plugin-catalog-backend-module-extensions@sha256:9fad03e713fe046ab2b381d243bbc231497dcb27c260aa127fa6fd163254987d!red-hat-developer-hub-backstage-plugin-catalog-backend-module-extensions # was :bs_1.52.0__0.18.0
   disabled: false
 # VeeCode marketplace backend (byte-identical across tags; owns /api/extensions/*).
 - package: oci://quay.io/veecode/devportal-marketplace-backend@sha256:fe274bae36be4ca70650a2f36802772b82ad47f4a3eac4d6702619c980dbf489!devportal-marketplace-backend # was :bs_1.52.0__0.2.0
@@ -396,11 +391,9 @@ plugins:
               priority: 72
 
 # ══ 0.1.1 — VeeCode 2.x default face, delivered via chart (M4.7) ═══════
-# Package refs verified against the running 3.0.0-beta.1 image's
-# /opt/app-root/src/dynamic-plugins/dist/ directory.
 # ── Docs / TechDocs (GAP-001; RHDH default frontend config — registers
 #    the /docs route + the sidebar "Docs" item + the entity docs tab) ───
-- package: ./dynamic-plugins/dist/backstage-plugin-techdocs
+- package: oci://quay.io/veecode/backstage-plugin-techdocs@sha256:d8222a85e6a4b61e230e2ff8944ccd794876c1f30eb9b49faeade3c6c308dcc9!backstage-plugin-techdocs # was :bs_1.52.0__1.17.7
   disabled: false
   pluginConfig:
     dynamicPlugins:
@@ -443,13 +436,13 @@ plugins:
               config:
                 layout:
                   gridColumn: "1 / -1"
-- package: ./dynamic-plugins/dist/backstage-plugin-techdocs-backend-dynamic
+- package: oci://quay.io/veecode/backstage-plugin-techdocs-backend@sha256:a52ab2f01ccf85a23352655b25d4449996cafed381cfb6d837cf537205021c3e!backstage-plugin-techdocs-backend # was :bs_1.52.0__2.2.1
   disabled: false
-- package: ./dynamic-plugins/dist/backstage-plugin-techdocs-module-addons-contrib
+- package: oci://quay.io/veecode/backstage-plugin-techdocs-module-addons-contrib@sha256:9feeac06c77eb32f9b5a7f2fa74e2eaa9d538bdb0dd62811ec5f9d010c437035!backstage-plugin-techdocs-module-addons-contrib # was :bs_1.52.0__1.1.37
   disabled: false
 # ── Notifications + Signals (GAP-003; frontend config registers the
 #    /notifications route + the sidebar "Notifications" item) ───────────
-- package: ./dynamic-plugins/dist/backstage-plugin-notifications
+- package: oci://quay.io/veecode/backstage-plugin-notifications@sha256:bb3c3f0739f81ac5aa1e40f63bbc7d1aa99bf8c80cd5f6c232f74ed88d2315a2!backstage-plugin-notifications # was :bs_1.52.0__0.5.18
   disabled: false
   pluginConfig:
     dynamicPlugins:
@@ -464,14 +457,14 @@ plugins:
           menuItems:
             notifications:
               priority: 80
-- package: ./dynamic-plugins/dist/backstage-plugin-signals
+- package: oci://quay.io/veecode/backstage-plugin-signals@sha256:8764b50b78b643aa8d2bbbd6a67427c8924e9226c40f0b5c371aed4d09f16610!backstage-plugin-signals # was :bs_1.52.0__0.0.32
   disabled: false
-- package: ./dynamic-plugins/dist/backstage-plugin-notifications-backend-dynamic
+- package: oci://quay.io/veecode/backstage-plugin-notifications-backend@sha256:b089cdda63806e0aff83f5b51631f2e30a84b346f01d73b01aadc31ebda78b96!backstage-plugin-notifications-backend # was :bs_1.52.0__0.6.6
   disabled: false
-- package: ./dynamic-plugins/dist/backstage-plugin-signals-backend-dynamic
+- package: oci://quay.io/veecode/backstage-plugin-signals-backend@sha256:3767a18cdb454ac8aa156a1ca15bbd5086badd0cff0d55bd3b16fad68554133e!backstage-plugin-signals-backend # was :bs_1.52.0__0.3.16
   disabled: false
 # ── Tech Radar (GAP-005; pluginConfig copied from 2.x recommended.yaml:44-66) ─
-- package: ./dynamic-plugins/dist/backstage-community-plugin-tech-radar
+- package: oci://quay.io/veecode/backstage-community-plugin-tech-radar@sha256:2a5e149c22bdc02f6cf0d1ba6db0113105b284bf05b3806678cca601387f3b63!backstage-community-plugin-tech-radar # was :bs_1.52.0__1.17.0
   disabled: false
   pluginConfig:
     dynamicPlugins:
@@ -494,5 +487,5 @@ plugins:
           menuItems:
             tech-radar:
               priority: 76
-- package: ./dynamic-plugins/dist/backstage-community-plugin-tech-radar-backend-dynamic
+- package: oci://quay.io/veecode/backstage-community-plugin-tech-radar-backend@sha256:71f7f6c4816156120e693bf3c2ff29ee35c3725406c996c7de58607800df3a99!backstage-community-plugin-tech-radar-backend # was :bs_1.52.0__1.16.0
   disabled: false
