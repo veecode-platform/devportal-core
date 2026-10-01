@@ -68,6 +68,7 @@ write_face() {
   } > "$FIXTURE_ROOT/face.yaml"
 }
 run_gate() {
+  tar -czf "$FIXTURE_ROOT/layer" -C "$FIXTURE_ROOT/index" .
   env PATH="$FIXTURE_ROOT/bin:$PATH" \
     FIXTURE_ROOT="$FIXTURE_ROOT" \
     FACE_FILE="$FIXTURE_ROOT/face.yaml" \
