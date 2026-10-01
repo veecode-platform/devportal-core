@@ -53,24 +53,24 @@
  * The operator document is written back
  * VERBATIM (its `includes:` and every other top-level key are preserved)
  * except `plugins:`, which becomes operator.plugins followed by every
- * extensions.plugins entry whose normalized key is NOT already present in
- * operator.plugins. A dropped entry logs a loud warning naming the key —
+ * extensions.plugins entry that does not name the same plugin as an operator
+ * entry. A dropped entry logs a loud warning naming the operator key —
  * "operator config wins for <key>" — so a silently-ignored marketplace
  * install is always visible in the boot logs.
  *
- * Key normalization mirrors the installer's parse_plugin_key exactly the
- * way regenerate-extensions-install.js's normalizePluginKey already does
- * (npm packages compare by name — the trailing `@<version>` is stripped;
- * OCI packages compare by `registry` + `!<path>`, with both the tag and the
- * digest stripped; local `./` paths compare as-is). That function is
- * require()'d from the sibling script below rather than re-implemented,
- * since the two must never drift out of sync with each other.
+ * Plugin identity uses regenerate-extensions-install.js's samePlugin rule:
+ * OCI refs share a registry and repository, and match when either omits its
+ * selector or both selectors match. Other refs compare by normalizePluginKey.
+ * Both functions come from the sibling script so the two paths cannot drift.
  */
 
 const fs = require('fs');
 const path = require('path');
 const YAML = require('yaml');
-const { normalizePluginKey } = require('./regenerate-extensions-install.js');
+const {
+  normalizePluginKey,
+  samePlugin,
+} = require('./regenerate-extensions-install.js');
 
 // Resolved in main() from DEVPORTAL_DB_PATH — see the header note on why the
 // output must land on the writable volume, not the read-only image fs.
@@ -163,20 +163,20 @@ function main() {
   const operatorPlugins = Array.isArray(operator.doc.plugins) ? operator.doc.plugins : [];
   const extensionsPlugins = loadExtensionsPlugins();
 
-  const operatorKeys = new Set();
-  for (const p of operatorPlugins) {
-    if (p && typeof p.package === 'string') operatorKeys.add(normalizePluginKey(p.package));
-  }
-
   const mergedExtras = [];
   for (const p of extensionsPlugins) {
     if (!p || typeof p.package !== 'string') {
       warn('extensions entry has no usable "package" key; skipping it');
       continue;
     }
-    const key = normalizePluginKey(p.package);
-    if (operatorKeys.has(key)) {
-      warn(`operator config wins for ${key}`);
+    const operatorEntry = operatorPlugins.find(
+      candidate =>
+        candidate &&
+        typeof candidate.package === 'string' &&
+        samePlugin(candidate.package, p.package),
+    );
+    if (operatorEntry) {
+      warn(`operator config wins for ${normalizePluginKey(operatorEntry.package)}`);
       continue;
     }
     mergedExtras.push(p);
