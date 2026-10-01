@@ -44,7 +44,7 @@ in the `main` branch of the [repository](https://github.com/veecode-platform/dev
 | `@backstage/catalog-model` | `1.9.0` |
 | `@backstage/cli-node` | `0.3.3` |
 | `@backstage/config` | `1.3.8` |
-| `@backstage/config-loader` | `undefined` |
+| `@backstage/config-loader` | `1.10.12` |
 
 
 

@@ -1,4 +1,4 @@
-import { writeFile } from 'fs/promises';
+import { readFile, writeFile } from 'fs/promises';
 
 // Check for required arguments
 const outputFilePath = process.argv[2];
@@ -73,15 +73,40 @@ async function getFileFromGithub(repository, branch, filePath) {
 
 }
 
+function getLockfileVersion(lockfile, packageName) {
+  const lines = lockfile.split(/\r?\n/);
+  const selectorPrefix = `${packageName}@`;
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const selectors = lines[index]
+      .trim()
+      .replace(/:$/, '')
+      .replace(/^"|"$/g, '')
+      .split(/,\s*/);
+    if (!selectors.some(selector => selector.startsWith(selectorPrefix))) {
+      continue;
+    }
+
+    for (let entryIndex = index + 1; entryIndex < lines.length && lines[entryIndex].trim(); entryIndex += 1) {
+      const match = lines[entryIndex].match(/^\s+version:?\s+["']?([^"'\s]+)["']?\s*$/);
+      if (match) {
+        return match[1];
+      }
+    }
+  }
+
+  return undefined;
+}
+
 // generate the table for the packages and versions based on the provided package.json
 // only packages in the packageNames array will be included
-async function generateTable(packageJson, packageNames) {
+async function generateTable(packageJson, packageNames, lockfile) {
   let table = `
 | **Package**                    | **Version** |
 | ------------------------------ | ----------- |
 `
   for (const pkg of packageNames) {
-    const version = packageJson.dependencies[pkg]
+    const version = packageJson.dependencies?.[pkg] ?? getLockfileVersion(lockfile, pkg)
     if (!version) {
       console.warn(`Unable to find ${pkg} in packageNames`)
     }
@@ -124,9 +149,10 @@ async function main() {
 
   const frontendPackageJson = await getFileFromGithub(repository, targetBranch, frontendPackageJsonPath);
   const backendPackageJson = await getFileFromGithub(repository, targetBranch, backendPackageJsonPath);
+  const lockfile = await readFile(new URL('../yarn.lock', import.meta.url), 'utf8');
 
-  const frontendTable = await generateTable(JSON.parse(frontendPackageJson), frontendPackages)
-  const backendTable = await generateTable(JSON.parse(backendPackageJson), backendPackages)
+  const frontendTable = await generateTable(JSON.parse(frontendPackageJson), frontendPackages, lockfile)
+  const backendTable = await generateTable(JSON.parse(backendPackageJson), backendPackages, lockfile)
 
   const preRelaseInfo = `(pre-release, versions can change for final release)`
 
