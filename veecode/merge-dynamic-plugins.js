@@ -58,10 +58,13 @@
  * "operator config wins for <key>" — so a silently-ignored marketplace
  * install is always visible in the boot logs.
  *
- * Plugin identity uses regenerate-extensions-install.js's samePlugin rule:
- * OCI refs share a registry and repository, and match when either omits its
- * selector or both selectors match. Other refs compare by normalizePluginKey.
- * Both functions come from the sibling script so the two paths cannot drift.
+ * Plugin identity uses regenerate-extensions-install.js's samePlugin rule.
+ * Here each marketplace row is compared directly with deploy entries, so a
+ * selector-less deploy entry intentionally suppresses rows for every selector
+ * in that repository: deploy configuration wins. The pre-step groups rows by
+ * repository and selector because its selector-less marketplace row can be
+ * ambiguous. Both functions come from the sibling script so identity stays
+ * consistent across the two paths.
  */
 
 const fs = require('fs');

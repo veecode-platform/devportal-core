@@ -82,7 +82,14 @@ async function seed(database, { digestColumns, rows }) {
 
 async function preparePrestep(
   t,
-  { prefix, digestColumns = true, rows, registry = {}, faceRefs = [] },
+  {
+    prefix,
+    digestColumns = true,
+    rows,
+    registry = {},
+    faceRefs = [],
+    faceFilePath,
+  },
 ) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'prestep-test-'));
   const database = `${prefix}extensions`;
@@ -111,11 +118,13 @@ async function preparePrestep(
       backend: { database: { client: 'pg', connection: PG, prefix } },
     }),
   );
-  const face = path.join(dir, 'dynamic-plugins.veecode.yaml');
-  fs.writeFileSync(
-    face,
-    YAML.stringify({ plugins: faceRefs.map(ref => ({ package: ref })) }),
-  );
+  const face = faceFilePath || path.join(dir, 'dynamic-plugins.veecode.yaml');
+  if (!faceFilePath) {
+    fs.writeFileSync(
+      face,
+      YAML.stringify({ plugins: faceRefs.map(ref => ({ package: ref })) }),
+    );
+  }
   const calls = path.join(dir, 'skopeo-calls');
   const data = path.join(dir, 'data');
   const out = path.join(data, 'extensions-install.yaml');
@@ -874,6 +883,138 @@ describe('regenerate-extensions-install.js', () => {
     assertSummary(run, 2, { pinned: 2, nonOci: 0, skipped: 0, disabled: 0 });
   });
 
+  it('preserves an ambiguous selector-less row without dropping distinct selectors', async t => {
+    const repository = 'oci://registry.test/veecode/bundle';
+    const scenarios = [
+      {
+        name: 'selector-less row first, newest',
+        rootVersion: '1.0.0',
+        selectorVersion: '2.0.0',
+        rootUpdated: 30,
+        alphaUpdated: 10,
+        betaUpdated: 20,
+      },
+      {
+        name: 'selector-less row first, oldest',
+        rootVersion: '1.0.0',
+        selectorVersion: '2.0.0',
+        rootUpdated: 10,
+        alphaUpdated: 20,
+        betaUpdated: 30,
+      },
+      {
+        name: 'selector-less row last, newest',
+        rootVersion: '2.0.0',
+        selectorVersion: '1.0.0',
+        rootUpdated: 30,
+        alphaUpdated: 10,
+        betaUpdated: 20,
+      },
+      {
+        name: 'selector-less row last, oldest',
+        rootVersion: '2.0.0',
+        selectorVersion: '1.0.0',
+        rootUpdated: 10,
+        alphaUpdated: 20,
+        betaUpdated: 30,
+      },
+    ];
+    const failures = [];
+
+    for (const [index, scenario] of scenarios.entries()) {
+      const rootRef = `${repository}:${scenario.rootVersion}`;
+      const alphaRef = `${repository}:${scenario.selectorVersion}!alpha`;
+      const betaRef = `${repository}:${scenario.selectorVersion}!beta`;
+      const refs = [rootRef, alphaRef, betaRef];
+      const registry = Object.fromEntries(
+        refs.map(ref => [
+          `docker://${ref.slice('oci://'.length).split('!')[0]}`,
+          digest(1),
+        ]),
+      );
+      const run = await runPrestep(t, {
+        prefix: `prestep_bridge_${index}_`,
+        rows: [
+          installation(rootRef, { updated_at: at(scenario.rootUpdated) }),
+          installation(alphaRef, { updated_at: at(scenario.alphaUpdated) }),
+          installation(betaRef, { updated_at: at(scenario.betaUpdated) }),
+        ],
+        registry,
+      });
+      assertWritten(run);
+
+      const packages = YAML.parse(run.yaml).plugins.map(plugin => plugin.package);
+      const expectedPackages = [
+        `${repository}@${digest(1)}`,
+        `${repository}@${digest(1)}!alpha`,
+        `${repository}@${digest(1)}!beta`,
+      ].sort();
+      const namesAmbiguity =
+        run.stderr.toLowerCase().includes('ambiguous') &&
+        refs.every(ref => run.stderr.includes(`"${ref}"`));
+      if (
+        JSON.stringify(packages.sort()) !== JSON.stringify(expectedPackages) ||
+        !namesAmbiguity
+      ) {
+        failures.push({
+          scenario: scenario.name,
+          packages,
+          expectedPackages,
+          namesAmbiguity,
+          stderr: run.stderr,
+        });
+      }
+    }
+
+    assert.deepEqual(failures, [], JSON.stringify(failures, null, 2));
+  });
+
+  it('keeps the preferred row when a selector-less ref has only one selector', async t => {
+    const repository = 'oci://registry.test/veecode/bundle';
+    const rootRef = `${repository}:1.0.0`;
+    const alphaRef = `${repository}:2.0.0!alpha`;
+    const run = await runPrestep(t, {
+      prefix: 'prestep_bridge_single_selector_',
+      rows: [
+        installation(rootRef, { updated_at: at(30) }),
+        installation(alphaRef, { updated_at: at(20) }),
+      ],
+      registry: {
+        'docker://registry.test/veecode/bundle:1.0.0': digest(1),
+        'docker://registry.test/veecode/bundle:2.0.0': digest(2),
+      },
+    });
+
+    assertWritten(run);
+    assert.deepEqual(YAML.parse(run.yaml), {
+      plugins: [{ package: `${repository}@${digest(1)}`, disabled: false }],
+    });
+  });
+
+  it('treats a row matching multiple face selectors as a non-face row', async t => {
+    const repository = 'oci://registry.test/veecode/bundle';
+    const rowRef = `${repository}:1.0.0`;
+    const alphaFace = `${repository}@${digest(4)}!alpha`;
+    const betaFace = `${repository}@${digest(5)}!beta`;
+    const run = await runPrestep(t, {
+      prefix: 'prestep_face_ambiguous_selectors_',
+      rows: [installation(rowRef)],
+      registry: {
+        'docker://registry.test/veecode/bundle:1.0.0': digest(6),
+      },
+      faceRefs: [alphaFace, betaFace],
+    });
+
+    assertWritten(run);
+    assert.deepEqual(YAML.parse(run.yaml), {
+      plugins: [{ package: `${repository}@${digest(6)}`, disabled: false }],
+    });
+    assert.ok(run.stderr.toLowerCase().includes('ambiguous'), run.stderr);
+    for (const ref of [rowRef, alphaFace, betaFace]) {
+      assert.ok(run.stderr.includes(`"${ref}"`), run.stderr);
+    }
+  });
+
   it('ignores a disabled Marketplace backend OCI face row', async t => {
     const faceRef =
       `oci://quay.io/veecode/devportal-marketplace-backend@${digest(4)}` +
@@ -910,6 +1051,78 @@ describe('regenerate-extensions-install.js', () => {
       faceRef,
       rowRef,
     });
+  });
+
+  it('protects exactly the four named entries in the real product face', async t => {
+    const faceFile = path.join(__dirname, '..', 'dynamic-plugins.veecode.yaml');
+    const faceEntries = YAML.parse(fs.readFileSync(faceFile, 'utf8')).plugins;
+    const protectedNames = [
+      'devportal-marketplace-backend',
+      'devportal-marketplace-frontend-dynamic',
+      'devportal-pending-changes-dynamic',
+      'red-hat-developer-hub-backstage-plugin-catalog-backend-module-extensions',
+    ];
+    const namesForRef = packageRef => {
+      let candidates;
+      if (packageRef.startsWith('oci://')) {
+        const [image, selector] = packageRef.slice('oci://'.length).split('!');
+        const noDigest = image.split('@')[0];
+        const lastColon = noDigest.lastIndexOf(':');
+        const lastSlash = noDigest.lastIndexOf('/');
+        const repository =
+          lastColon > lastSlash ? noDigest.slice(0, lastColon) : noDigest;
+        candidates = [repository.split('/').pop(), selector];
+      } else {
+        candidates = [packageRef.replace(/\/+$/, '').split('/').pop()];
+      }
+      return new Set(
+        candidates
+          .filter(Boolean)
+          .flatMap(name => [name, name.replace(/-dynamic$/, '')]),
+      );
+    };
+    const countByProtectedName = Object.fromEntries(
+      protectedNames.map(name => [
+        name,
+        faceEntries.filter(entry => namesForRef(entry.package).has(name)).length,
+      ]),
+    );
+    const protectedEntries = faceEntries.filter(entry =>
+      protectedNames.some(name => namesForRef(entry.package).has(name)),
+    );
+    assert.deepEqual(
+      countByProtectedName,
+      Object.fromEntries(protectedNames.map(name => [name, 1])),
+    );
+    assert.equal(protectedEntries.length, protectedNames.length);
+
+    const run = await runPrestep(t, {
+      prefix: 'prestep_real_face_protected_',
+      rows: faceEntries.map((entry, index) =>
+        installation(entry.package, {
+          disabled: true,
+          updated_at: at(index + 1),
+        }),
+      ),
+      faceFilePath: faceFile,
+    });
+
+    assertWritten(run);
+    assert.deepEqual(run.skopeoCalls, []);
+    const expected = faceEntries
+      .filter(entry => !protectedEntries.includes(entry))
+      .map(entry => ({ package: entry.package, disabled: true }))
+      .sort((a, b) => a.package.localeCompare(b.package));
+    const actual = YAML.parse(run.yaml).plugins
+      .map(({ package: packageRef, disabled }) => ({
+        package: packageRef,
+        disabled,
+      }))
+      .sort((a, b) => a.package.localeCompare(b.package));
+    assert.deepEqual(actual, expected);
+    for (const entry of protectedEntries) {
+      assert.ok(run.stderr.includes(`"${entry.package}"`), run.stderr);
+    }
   });
 
   it('keeps the registry port when it pins a ref that has a selector', async t => {

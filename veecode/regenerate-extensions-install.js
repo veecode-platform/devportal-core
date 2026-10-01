@@ -373,8 +373,8 @@ function rowsToPlugins(rows, effectiveRefs = new Map()) {
 // registry/image path, plus the `!<plugin-path>` selector when the ref has one,
 // with the tag/digest stripped; npm-style refs compare with any trailing
 // `@<version>` stripped; local `./` paths compare as-is (there is nothing to
-// strip). The installer detects a selector-less ref's plugin path from the image,
-// so such a ref never matches a selector-bearing one here.
+// strip). Selector-less OCI refs get a repository-only key here; callers that
+// need the installer's selector-aware identity use samePlugin instead.
 function normalizePluginKey(ref) {
   if (typeof ref !== 'string') return ref;
   if (ref.startsWith('./')) return ref;
@@ -387,11 +387,9 @@ function normalizePluginKey(ref) {
   return at > 0 ? ref.slice(0, at) : ref;
 }
 
-// Best-effort key for a not-yet-transformed DB row: what package this row would
-// resolve to, without paying for digest resolution. Mirrors rowsToPlugins'
-// precedence (config_yaml's own `package:` wins, else the row's package_name)
-// but stays pre-digest — this only needs to answer "is this the face's package",
-// which normalizePluginKey settles regardless of which version is pinned.
+// Best-effort package ref for a DB row before digest resolution. It mirrors
+// rowsToPlugins' precedence (`config_yaml`'s `package:` wins, else
+// `package_name`); callers use samePlugin to compare the ref with face entries.
 function rowPackageRef(row) {
   const raw = row.config_yaml != null ? String(row.config_yaml).trim() : '';
   if (raw) {
@@ -422,35 +420,82 @@ function preferredRow(current, candidate) {
 }
 
 // Rows are keyed by their full reference, so installing a newer reference of an
-// installed plugin leaves the old row next to the new one. The installer keys an
-// OCI identity follows the installer's registry path and selector behavior.
-// A selector-less ref resolves to the image's single plugin path, so it also
-// matches the selector-bearing form for that image. Keep one OCI row per
-// samePlugin identity, using preferredRow. Non-OCI rows pass through because
-// normalizePluginKey only approximates the installer's npm key and strips at
-// the last "@" of a tarball URL that the installer keeps whole.
+// installed plugin leaves the old row next to the new one. The installer fails
+// the install when two enabled entries use the same plugin key, so reduce OCI
+// duplicates before resolution. Do not chain samePlugin comparisons here: its
+// selector-less match can bridge two distinct selectors. Group by repository
+// and exact selector, joining selector-less rows only when there is one
+// selector. Non-OCI rows pass through because normalizePluginKey only
+// approximates the installer's npm key and strips at the last "@" of a tarball
+// URL that the installer keeps whole.
 function keepOneRowPerPlugin(rows) {
-  const preferred = [];
+  const byRepository = new Map();
   for (const row of rows) {
-    const ref = rowPackageRef(row);
-    if (!splitOciRef(ref)) continue;
-    const index = preferred.findIndex(candidate =>
-      samePlugin(rowPackageRef(candidate), ref),
-    );
-    if (index === -1) preferred.push(row);
-    else preferred[index] = preferredRow(preferred[index], row);
+    const parts = splitOciRef(rowPackageRef(row));
+    if (!parts) continue;
+
+    const repository = ociRepository(parts.image);
+    let group = byRepository.get(repository);
+    if (!group) {
+      group = { rows: [], selectorless: [], bySelector: new Map() };
+      byRepository.set(repository, group);
+    }
+    group.rows.push({ row, selector: parts.selector });
+    if (parts.selector === null) {
+      group.selectorless.push(row);
+      continue;
+    }
+    const selectorRows = group.bySelector.get(parts.selector) || [];
+    selectorRows.push(row);
+    group.bySelector.set(parts.selector, selectorRows);
   }
+
+  const kept = new Set();
+  const formatNames = candidates =>
+    candidates.map(row => `"${row.package_name}"`).join(', ');
+  const keepPreferred = candidates => {
+    if (candidates.length === 0) return;
+    let preferred = candidates[0];
+    for (const candidate of candidates.slice(1)) {
+      preferred = preferredRow(preferred, candidate);
+    }
+    kept.add(preferred);
+    for (const row of candidates) {
+      if (row === preferred) continue;
+      warn(
+        `dropping "${row.package_name}": "${preferred.package_name}" names the same plugin and is preferred`,
+      );
+    }
+  };
+
+  for (const [repository, group] of byRepository) {
+    if (group.bySelector.size > 1) {
+      for (const row of group.selectorless) kept.add(row);
+      if (group.selectorless.length > 0) {
+        const selectorRows = [...group.bySelector.values()].flat();
+        warn(
+          `keeping ambiguous selector-less row(s) ${formatNames(group.selectorless)} for OCI repository "${repository}"; selector-bearing row(s) ${formatNames(selectorRows)} name distinct plugins`,
+        );
+      }
+      for (const selectorRows of group.bySelector.values()) {
+        keepPreferred(selectorRows);
+      }
+      continue;
+    }
+
+    const onlySelector = group.bySelector.keys().next().value;
+    keepPreferred(
+      group.rows
+        .filter(
+          ({ selector }) => selector === null || selector === onlySelector,
+        )
+        .map(({ row }) => row),
+    );
+  }
+
   return rows.filter(row => {
-    const ref = rowPackageRef(row);
-    if (!splitOciRef(ref)) return true;
-    const kept = preferred.find(candidate =>
-      samePlugin(rowPackageRef(candidate), ref),
-    );
-    if (!kept || kept === row) return true;
-    warn(
-      `dropping "${row.package_name}": "${kept.package_name}" names the same plugin and is preferred`,
-    );
-    return false;
+    if (!splitOciRef(rowPackageRef(row))) return true;
+    return kept.has(row);
   });
 }
 
@@ -629,9 +674,22 @@ async function main() {
   if (faceEntries) {
     const nonFaceRows = [];
     for (const row of rows) {
-      const face = faceEntries.find(entry =>
+      const matches = faceEntries.filter(entry =>
         samePlugin(rowPackageRef(row), entry.package),
       );
+      const matchedSelectors = new Set(
+        matches
+          .map(entry => splitOciRef(entry.package)?.selector)
+          .filter(selector => selector !== null && selector !== undefined),
+      );
+      if (matchedSelectors.size > 1) {
+        warn(
+          `marketplace row "${row.package_name}" ambiguously matches face entries ${matches.map(entry => `"${entry.package}"`).join(', ')} with distinct selectors; treating it as a non-face row`,
+        );
+        nonFaceRows.push(row);
+        continue;
+      }
+      const face = matches[0];
       if (!face) {
         nonFaceRows.push(row);
         continue;
@@ -660,7 +718,7 @@ async function main() {
     log(
       `face default "${packageRef}": marketplace row "${row.package_name}" sets disabled=${Boolean(row.disabled)}`,
     );
-    return { package: packageRef, disabled: row.disabled };
+    return { package: packageRef, disabled: Boolean(row.disabled) };
   });
 
   rows = keepOneRowPerPlugin(rows);
