@@ -10,7 +10,7 @@ const YAML = require('yaml');
 const { Client } = require('pg');
 
 const SCRIPT = path.join(__dirname, '..', 'regenerate-extensions-install.js');
-const { normalizePluginKey } = require(SCRIPT);
+const { normalizePluginKey, samePlugin } = require(SCRIPT);
 
 const PG = {
   host: process.env.PGHOST || '127.0.0.1',
@@ -82,7 +82,14 @@ async function seed(database, { digestColumns, rows }) {
 
 async function preparePrestep(
   t,
-  { prefix, digestColumns = true, rows, registry = {}, faceRefs = [] },
+  {
+    prefix,
+    digestColumns = true,
+    rows,
+    registry = {},
+    faceRefs = [],
+    faceFilePath,
+  },
 ) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'prestep-test-'));
   const database = `${prefix}extensions`;
@@ -111,11 +118,13 @@ async function preparePrestep(
       backend: { database: { client: 'pg', connection: PG, prefix } },
     }),
   );
-  const face = path.join(dir, 'dynamic-plugins.veecode.yaml');
-  fs.writeFileSync(
-    face,
-    YAML.stringify({ plugins: faceRefs.map(ref => ({ package: ref })) }),
-  );
+  const face = faceFilePath || path.join(dir, 'dynamic-plugins.veecode.yaml');
+  if (!faceFilePath) {
+    fs.writeFileSync(
+      face,
+      YAML.stringify({ plugins: faceRefs.map(ref => ({ package: ref })) }),
+    );
+  }
   const calls = path.join(dir, 'skopeo-calls');
   const data = path.join(dir, 'data');
   const out = path.join(data, 'extensions-install.yaml');
@@ -208,6 +217,99 @@ const dropping = (dropped, kept) =>
 const pinned = (name, sha) =>
   `oci://registry.test/veecode/${name}@${sha}!${name}`;
 const image = name => `docker://registry.test/veecode/${name}:1.0.0`;
+const PROTECTED_MARKETPLACE_PLUGINS = [
+  'devportal-marketplace-backend',
+  'devportal-marketplace-frontend-dynamic',
+  'devportal-pending-changes-dynamic',
+  'red-hat-developer-hub-backstage-plugin-catalog-backend-module-extensions',
+].join(', ');
+
+const SAME_PLUGIN_VECTORS = [
+  [
+    'matches references with different digests for one repository',
+    'oci://quay.io/veecode/x@sha256:A',
+    'oci://quay.io/veecode/x@sha256:B',
+    true,
+  ],
+  [
+    'matches a selector-less tag with a selector-bearing digest',
+    'oci://quay.io/veecode/x:bs_1.52.0__1.0.0',
+    'oci://quay.io/veecode/x@sha256:A!x',
+    true,
+  ],
+  [
+    'matches the same selector across different digests',
+    'oci://quay.io/veecode/x@sha256:A!x',
+    'oci://quay.io/veecode/x@sha256:B!x',
+    true,
+  ],
+  [
+    'keeps different selectors on one repository separate',
+    'oci://quay.io/veecode/x@sha256:A!x',
+    'oci://quay.io/veecode/x@sha256:B!y',
+    false,
+  ],
+  [
+    'keeps different repositories with the same selector separate',
+    'oci://quay.io/veecode/x!a',
+    'oci://quay.io/veecode/y!a',
+    false,
+  ],
+  [
+    'keeps a registry port while ignoring tag changes',
+    'oci://localhost:5000/x:1',
+    'oci://localhost:5000/x:2',
+    true,
+  ],
+  [
+    'treats different registry ports as different repositories',
+    'oci://localhost:5000/x:1',
+    'oci://localhost:5001/x:1',
+    false,
+  ],
+  [
+    'matches identical local paths',
+    './dynamic-plugins/dist/a',
+    './dynamic-plugins/dist/a',
+    true,
+  ],
+  [
+    'keeps different local paths separate',
+    './dynamic-plugins/dist/a',
+    './dynamic-plugins/dist/a-dynamic',
+    false,
+  ],
+  [
+    'keeps a local path separate from an OCI reference',
+    './dynamic-plugins/dist/a',
+    'oci://quay.io/veecode/a@sha256:A',
+    false,
+  ],
+  [
+    'matches scoped npm packages across versions',
+    '@scope/pkg@1.0.0',
+    '@scope/pkg@2.0.0',
+    true,
+  ],
+];
+
+async function assertProtectedDisabledFaceRow(t, { prefix, faceRef, rowRef }) {
+  const run = await runPrestep(t, {
+    prefix,
+    rows: [installation(rowRef, { disabled: true })],
+    faceRefs: [faceRef],
+  });
+
+  assertWritten(run);
+  assert.deepEqual(YAML.parse(run.yaml), { plugins: [] });
+  assert.deepEqual(run.skopeoCalls, []);
+  assert.equal(run.storedDigests[rowRef], null);
+  assertLine(
+    run.stderr,
+    `VEECODE prestep: WARNING — ignoring disabled marketplace row "${rowRef}" for protected marketplace face plugin "${faceRef}"; protected plugins: ${PROTECTED_MARKETPLACE_PLUGINS}`,
+  );
+  assertSummary(run, 0, { pinned: 0, nonOci: 0, skipped: 0, disabled: 0 });
+}
 
 const ALL_GOOD_YAML = `plugins:
   - package: ./dynamic-plugins/dist/local-plugin-dynamic
@@ -439,45 +541,132 @@ describe('regenerate-extensions-install.js', () => {
     assertSummary(run, 5, { pinned: 1, nonOci: 1, skipped: 1, disabled: 2 });
   });
 
-  it('counts only the rows left after the product face dedup', async t => {
-    const faced = oci('faced');
+  it('maps a selector-less disabled face row to the face package without resolving it', async t => {
+    const rowRef = 'oci://registry.test/veecode/faced:1.0.0';
+    const faceRef = pinned('faced', digest(4));
     const run = await runPrestep(t, {
-      prefix: 'prestep_face_dedup_',
-      rows: [
-        installation(faced),
-        installation(oci('kept')),
-        installation('./dynamic-plugins/dist/local-plugin-dynamic'),
-      ],
-      registry: { [image('kept')]: digest(1) },
-      faceRefs: [pinned('faced', digest(4))],
+      prefix: 'prestep_face_disabled_',
+      rows: [installation(rowRef, { disabled: true })],
+      faceRefs: [faceRef],
     });
 
     assertWritten(run);
-    assert.deepEqual(run.skopeoCalls, [`inspect ${image('kept')}`]);
+    assert.deepEqual(run.skopeoCalls, []);
+    assert.deepEqual(YAML.parse(run.yaml), {
+      plugins: [{ package: faceRef, disabled: true }],
+    });
+    assertLine(
+      run.stdout,
+      `VEECODE prestep: face default "${faceRef}": marketplace row "${rowRef}" sets disabled=true`,
+    );
+    assert.equal(run.storedDigests[rowRef], null);
+    assertSummary(run, 0, { pinned: 0, nonOci: 0, skipped: 0, disabled: 0 });
+  });
+
+  it('removes pluginConfig from an enabled face row and prints the contract warning', async t => {
+    const rowRef = 'oci://registry.test/veecode/faced:1.0.0';
+    const faceRef = pinned('faced', digest(4));
+    const config = {
+      package: rowRef,
+      disabled: false,
+      pluginConfig: { dynamicPlugins: { frontend: { 'example.plugin': {} } } },
+    };
+    const run = await runPrestep(t, {
+      prefix: 'prestep_face_config_',
+      rows: [installation(rowRef, { config_yaml: YAML.stringify(config) })],
+      faceRefs: [faceRef],
+    });
+
+    assertWritten(run);
+    assert.deepEqual(run.skopeoCalls, []);
+    assert.deepEqual(YAML.parse(run.yaml), {
+      plugins: [{ package: faceRef, disabled: false }],
+    });
+    assertLine(
+      run.stderr,
+      `VEECODE prestep: WARNING — ignoring the pluginConfig of "${rowRef}": the product face owns the configuration of "${faceRef}"`,
+    );
+    assertSummary(run, 0, { pinned: 0, nonOci: 0, skipped: 0, disabled: 0 });
+  });
+
+  it('keeps a row for a different selector on the face repository as a separate plugin', async t => {
+    const faceRef = pinned('faced', digest(4));
+    const rowRef = 'oci://registry.test/veecode/faced:1.0.0!other';
+    const run = await runPrestep(t, {
+      prefix: 'prestep_face_other_selector_',
+      rows: [installation(rowRef)],
+      registry: { [image('faced')]: digest(5) },
+      faceRefs: [faceRef],
+    });
+
+    assertWritten(run);
+    assert.deepEqual(run.skopeoCalls, [`inspect ${image('faced')}`]);
     assert.deepEqual(YAML.parse(run.yaml), {
       plugins: [
         {
-          package: './dynamic-plugins/dist/local-plugin-dynamic',
+          package: `oci://registry.test/veecode/faced@${digest(5)}!other`,
           disabled: false,
         },
-        { package: pinned('kept', digest(1)), disabled: false },
       ],
     });
-    assert.ok(
-      run.stdout
-        .split('\n')
-        .some(
-          line =>
-            line.startsWith(`VEECODE prestep: excluding "${faced}" from `) &&
-            line.endsWith(': declared in product face file'),
-        ),
-      `no exclusion line for the face-owned row in\n${run.stdout}`,
-    );
+    assert.ok(!run.stdout.includes('face default'), run.stdout);
+    assertSummary(run, 1, { pinned: 1, nonOci: 0, skipped: 0, disabled: 0 });
+  });
+
+  it('keeps one face row by preferring enabled state and then the newest update', async t => {
+    const faceRef = pinned('faced', digest(4));
+    const olderEnabled = versioned('faced', '1.0.0');
+    const newerEnabled = versioned('faced', '2.0.0');
+    const newestDisabled = versioned('faced', '3.0.0');
+    const run = await runPrestep(t, {
+      prefix: 'prestep_face_preferred_',
+      rows: [
+        installation(olderEnabled, { updated_at: at(10) }),
+        installation(newerEnabled, { updated_at: at(20) }),
+        installation(newestDisabled, { disabled: true, updated_at: at(30) }),
+      ],
+      faceRefs: [faceRef],
+    });
+
+    assertWritten(run);
+    assert.deepEqual(run.skopeoCalls, []);
+    assert.deepEqual(YAML.parse(run.yaml), {
+      plugins: [{ package: faceRef, disabled: false }],
+    });
     assertLine(
       run.stdout,
-      'VEECODE prestep: dedup against the product face file removed 1 selection(s)',
+      `VEECODE prestep: face default "${faceRef}": marketplace row "${newerEnabled}" sets disabled=false`,
     );
-    assertSummary(run, 2, { pinned: 1, nonOci: 1, skipped: 0, disabled: 0 });
+    assertSummary(run, 0, { pinned: 0, nonOci: 0, skipped: 0, disabled: 0 });
+  });
+
+  it('leaves a row unchanged when the face does not declare its plugin', async t => {
+    const faceRef = pinned('faced', digest(4));
+    const rowRef = oci('marketplace-only');
+    const config = {
+      package: rowRef,
+      disabled: false,
+      pluginConfig: { dynamicPlugins: { frontend: { 'marketplace.only': {} } } },
+    };
+    const run = await runPrestep(t, {
+      prefix: 'prestep_non_face_row_',
+      rows: [installation(rowRef, { config_yaml: YAML.stringify(config) })],
+      registry: { [image('marketplace-only')]: digest(6) },
+      faceRefs: [faceRef],
+    });
+
+    assertWritten(run);
+    assert.deepEqual(YAML.parse(run.yaml), {
+      plugins: [
+        {
+          package: pinned('marketplace-only', digest(6)),
+          disabled: false,
+          pluginConfig: { dynamicPlugins: { frontend: { 'marketplace.only': {} } } },
+        },
+      ],
+    });
+    assert.deepEqual(run.skopeoCalls, [`inspect ${image('marketplace-only')}`]);
+    assertSummary(run, 1, { pinned: 1, nonOci: 0, skipped: 0, disabled: 0 });
   });
 
   it('keeps only the most recently written of the enabled rows that name one plugin', async t => {
@@ -694,40 +883,289 @@ describe('regenerate-extensions-install.js', () => {
     assertSummary(run, 2, { pinned: 2, nonOci: 0, skipped: 0, disabled: 0 });
   });
 
-  it('counts only the rows left after the face dedup and the same-plugin dedup', async t => {
-    const faced = oci('faced');
-    const current = versioned('versioned', '2.0.0');
-    const previous = versioned('versioned', '1.0.0');
+  it('omits an ambiguous selector-less row while keeping distinct selectors', async t => {
+    const repository = 'oci://registry.test/veecode/bundle';
+    const scenarios = [
+      {
+        name: 'selector-less row first, newest',
+        rootVersion: '1.0.0',
+        selectorVersion: '2.0.0',
+        rootUpdated: 30,
+        alphaUpdated: 10,
+        betaUpdated: 20,
+      },
+      {
+        name: 'selector-less row first, oldest',
+        rootVersion: '1.0.0',
+        selectorVersion: '2.0.0',
+        rootUpdated: 10,
+        alphaUpdated: 20,
+        betaUpdated: 30,
+        rootDisabled: true,
+      },
+      {
+        name: 'selector-less row last, newest',
+        rootVersion: '2.0.0',
+        selectorVersion: '1.0.0',
+        rootUpdated: 30,
+        alphaUpdated: 10,
+        betaUpdated: 20,
+      },
+      {
+        name: 'selector-less row last, oldest',
+        rootVersion: '2.0.0',
+        selectorVersion: '1.0.0',
+        rootUpdated: 10,
+        alphaUpdated: 20,
+        betaUpdated: 30,
+      },
+    ];
+    const failures = [];
+
+    for (const [index, scenario] of scenarios.entries()) {
+      const rootRef = `${repository}:${scenario.rootVersion}`;
+      const alphaRef = `${repository}:${scenario.selectorVersion}!alpha`;
+      const betaRef = `${repository}:${scenario.selectorVersion}!beta`;
+      const refs = [rootRef, alphaRef, betaRef];
+      const registry = Object.fromEntries(
+        refs.map(ref => [
+          `docker://${ref.slice('oci://'.length).split('!')[0]}`,
+          digest(1),
+        ]),
+      );
+      const run = await runPrestep(t, {
+        prefix: `prestep_bridge_${index}_`,
+        rows: [
+          installation(rootRef, {
+            disabled: scenario.rootDisabled,
+            updated_at: at(scenario.rootUpdated),
+          }),
+          installation(alphaRef, { updated_at: at(scenario.alphaUpdated) }),
+          installation(betaRef, { updated_at: at(scenario.betaUpdated) }),
+        ],
+        registry,
+      });
+      assertWritten(run);
+
+      const packages = YAML.parse(run.yaml).plugins.map(plugin => plugin.package);
+      const expectedPackages = [
+        `${repository}@${digest(1)}!alpha`,
+        `${repository}@${digest(1)}!beta`,
+      ].sort();
+      const namesAmbiguity =
+        run.stderr.toLowerCase().includes('ambiguous') &&
+        run.stderr.includes('omitting ambiguous selector-less row') &&
+        run.stderr.includes(
+          'installer rejects a path-less reference to a multi-plugin image',
+        ) &&
+        refs.every(ref => run.stderr.includes(`"${ref}"`));
+      if (
+        JSON.stringify(packages.sort()) !== JSON.stringify(expectedPackages) ||
+        !namesAmbiguity
+      ) {
+        failures.push({
+          scenario: scenario.name,
+          packages,
+          expectedPackages,
+          namesAmbiguity,
+          stderr: run.stderr,
+        });
+      }
+    }
+
+    assert.deepEqual(failures, [], JSON.stringify(failures, null, 2));
+  });
+
+  it('keeps the preferred row when a selector-less ref has only one selector', async t => {
+    const repository = 'oci://registry.test/veecode/bundle';
+    const rootRef = `${repository}:1.0.0`;
+    const alphaRef = `${repository}:2.0.0!alpha`;
     const run = await runPrestep(t, {
-      prefix: 'prestep_both_dedups_',
+      prefix: 'prestep_bridge_single_selector_',
       rows: [
-        installation(faced),
-        installation(previous, { updated_at: at(10) }),
-        installation(current, { updated_at: at(20) }),
-        installation(oci('kept')),
-        installation(oci('lost')),
-        installation(oci('parked'), { disabled: true }),
-        installation('./dynamic-plugins/dist/local-plugin-dynamic'),
+        installation(rootRef, { updated_at: at(30) }),
+        installation(alphaRef, { updated_at: at(20) }),
       ],
       registry: {
-        [image('kept')]: digest(1),
-        'docker://registry.test/veecode/versioned:2.0.0': digest(2),
+        'docker://registry.test/veecode/bundle:1.0.0': digest(1),
+        'docker://registry.test/veecode/bundle:2.0.0': digest(2),
       },
-      faceRefs: [pinned('faced', digest(4))],
     });
 
     assertWritten(run);
-    assert.deepEqual([...run.skopeoCalls].sort(), [
-      `inspect ${image('kept')}`,
-      `inspect ${image('lost')}`,
-      'inspect docker://registry.test/veecode/versioned:2.0.0',
-    ]);
-    assertLine(
-      run.stdout,
-      'VEECODE prestep: dedup against the product face file removed 1 selection(s)',
+    assert.deepEqual(YAML.parse(run.yaml), {
+      plugins: [{ package: `${repository}@${digest(1)}`, disabled: false }],
+    });
+  });
+
+  it('treats a row matching multiple face selectors as a non-face row', async t => {
+    const repository = 'oci://registry.test/veecode/bundle';
+    const rowRef = `${repository}:1.0.0`;
+    const alphaFace = `${repository}@${digest(4)}!alpha`;
+    const betaFace = `${repository}@${digest(5)}!beta`;
+    const run = await runPrestep(t, {
+      prefix: 'prestep_face_ambiguous_selectors_',
+      rows: [installation(rowRef)],
+      registry: {
+        'docker://registry.test/veecode/bundle:1.0.0': digest(6),
+      },
+      faceRefs: [alphaFace, betaFace],
+    });
+
+    assertWritten(run);
+    assert.deepEqual(YAML.parse(run.yaml), {
+      plugins: [{ package: `${repository}@${digest(6)}`, disabled: false }],
+    });
+    assert.ok(run.stderr.toLowerCase().includes('ambiguous'), run.stderr);
+    for (const ref of [rowRef, alphaFace, betaFace]) {
+      assert.ok(run.stderr.includes(`"${ref}"`), run.stderr);
+    }
+  });
+
+  it('omits an ambiguous selector-less non-face row after face matching', async t => {
+    const repository = 'oci://registry.test/veecode/bundle';
+    const rootRef = `${repository}:1.0.0`;
+    const alphaRef = `${repository}:2.0.0!market-alpha`;
+    const betaRef = `${repository}:3.0.0!market-beta`;
+    const alphaFace = `${repository}@${digest(4)}!face-alpha`;
+    const betaFace = `${repository}@${digest(5)}!face-beta`;
+    const refs = [rootRef, alphaRef, betaRef];
+    const registry = Object.fromEntries(
+      refs.map(ref => [
+        `docker://${ref.slice('oci://'.length).split('!')[0]}`,
+        digest(6),
+      ]),
     );
-    assertLine(run.stderr, dropping(previous, current));
-    assertSummary(run, 5, { pinned: 2, nonOci: 1, skipped: 1, disabled: 1 });
+    const run = await runPrestep(t, {
+      prefix: 'prestep_face_selectorless_ambiguous_marketplace_',
+      rows: refs.map((ref, index) =>
+        installation(ref, { updated_at: at(index + 1) }),
+      ),
+      registry,
+      faceRefs: [alphaFace, betaFace],
+    });
+
+    assertWritten(run);
+    const packages = YAML.parse(run.yaml).plugins.map(plugin => plugin.package);
+    assert.deepEqual(packages.sort(), [
+      `${repository}@${digest(6)}!market-alpha`,
+      `${repository}@${digest(6)}!market-beta`,
+    ].sort());
+    for (const ref of [rootRef, alphaRef, betaRef]) {
+      assert.ok(run.stderr.includes(`"${ref}"`), run.stderr);
+    }
+    assert.ok(run.stderr.includes(`"${alphaFace}"`), run.stderr);
+    assert.ok(run.stderr.includes(`"${betaFace}"`), run.stderr);
+  });
+
+  it('ignores a disabled Marketplace backend OCI face row', async t => {
+    const faceRef =
+      `oci://quay.io/veecode/devportal-marketplace-backend@${digest(4)}` +
+      '!devportal-marketplace-backend';
+    const rowRef = 'oci://quay.io/veecode/devportal-marketplace-backend:bs_1.52.0';
+
+    await assertProtectedDisabledFaceRow(t, {
+      prefix: 'prestep_protected_backend_',
+      faceRef,
+      rowRef,
+    });
+  });
+
+  it('ignores a disabled catalog provider local-path face row', async t => {
+    const faceRef =
+      './dynamic-plugins/dist/red-hat-developer-hub-backstage-plugin-catalog-backend-module-extensions-dynamic';
+
+    await assertProtectedDisabledFaceRow(t, {
+      prefix: 'prestep_protected_catalog_local_',
+      faceRef,
+      rowRef: faceRef,
+    });
+  });
+
+  it('ignores a disabled catalog provider OCI face row', async t => {
+    const faceRef =
+      `oci://quay.io/veecode/red-hat-developer-hub-backstage-plugin-catalog-backend-module-extensions@${digest(4)}` +
+      '!red-hat-developer-hub-backstage-plugin-catalog-backend-module-extensions-dynamic';
+    const rowRef =
+      'oci://quay.io/veecode/red-hat-developer-hub-backstage-plugin-catalog-backend-module-extensions:0.18.0';
+
+    await assertProtectedDisabledFaceRow(t, {
+      prefix: 'prestep_protected_catalog_oci_',
+      faceRef,
+      rowRef,
+    });
+  });
+
+  it('protects exactly the four named entries in the real product face', async t => {
+    const faceFile = path.join(__dirname, '..', 'dynamic-plugins.veecode.yaml');
+    const faceEntries = YAML.parse(fs.readFileSync(faceFile, 'utf8')).plugins;
+    const protectedNames = [
+      'devportal-marketplace-backend',
+      'devportal-marketplace-frontend-dynamic',
+      'devportal-pending-changes-dynamic',
+      'red-hat-developer-hub-backstage-plugin-catalog-backend-module-extensions',
+    ];
+    const namesForRef = packageRef => {
+      let candidates;
+      if (packageRef.startsWith('oci://')) {
+        const [image, selector] = packageRef.slice('oci://'.length).split('!');
+        const noDigest = image.split('@')[0];
+        const lastColon = noDigest.lastIndexOf(':');
+        const lastSlash = noDigest.lastIndexOf('/');
+        const repository =
+          lastColon > lastSlash ? noDigest.slice(0, lastColon) : noDigest;
+        candidates = [repository.split('/').pop(), selector];
+      } else {
+        candidates = [packageRef.replace(/\/+$/, '').split('/').pop()];
+      }
+      return new Set(
+        candidates
+          .filter(Boolean)
+          .flatMap(name => [name, name.replace(/-dynamic$/, '')]),
+      );
+    };
+    const countByProtectedName = Object.fromEntries(
+      protectedNames.map(name => [
+        name,
+        faceEntries.filter(entry => namesForRef(entry.package).has(name)).length,
+      ]),
+    );
+    const protectedEntries = faceEntries.filter(entry =>
+      protectedNames.some(name => namesForRef(entry.package).has(name)),
+    );
+    assert.deepEqual(
+      countByProtectedName,
+      Object.fromEntries(protectedNames.map(name => [name, 1])),
+    );
+    assert.equal(protectedEntries.length, protectedNames.length);
+
+    const run = await runPrestep(t, {
+      prefix: 'prestep_real_face_protected_',
+      rows: faceEntries.map((entry, index) =>
+        installation(entry.package, {
+          disabled: true,
+          updated_at: at(index + 1),
+        }),
+      ),
+      faceFilePath: faceFile,
+    });
+
+    assertWritten(run);
+    assert.deepEqual(run.skopeoCalls, []);
+    const expected = faceEntries
+      .filter(entry => !protectedEntries.includes(entry))
+      .map(entry => ({ package: entry.package, disabled: true }))
+      .sort((a, b) => a.package.localeCompare(b.package));
+    const actual = YAML.parse(run.yaml).plugins
+      .map(({ package: packageRef, disabled }) => ({
+        package: packageRef,
+        disabled,
+      }))
+      .sort((a, b) => a.package.localeCompare(b.package));
+    assert.deepEqual(actual, expected);
+    for (const entry of protectedEntries) {
+      assert.ok(run.stderr.includes(`"${entry.package}"`), run.stderr);
+    }
   });
 
   it('keeps the registry port when it pins a ref that has a selector', async t => {
@@ -795,4 +1233,15 @@ describe('regenerate-extensions-install.js', () => {
     assert.equal(normalizePluginKey(`${repository}:1.0.0`), repository);
     assert.equal(normalizePluginKey(`${repository}@${digest(8)}`), repository);
   });
+
+  for (const [name, a, b, expected] of SAME_PLUGIN_VECTORS) {
+    it(`samePlugin identity: ${name}`, () => {
+      assert.equal(
+        typeof samePlugin,
+        'function',
+        'regenerate-extensions-install.js must export the shared samePlugin rule',
+      );
+      assert.equal(samePlugin(a, b), expected);
+    });
+  }
 });

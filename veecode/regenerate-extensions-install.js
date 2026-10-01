@@ -76,12 +76,16 @@ const PLUGIN_ID = 'extensions';
 const DEFAULT_PREFIX = 'backstage_plugin_';
 const TABLE = 'marketplace_installations';
 
-// OD1 phase A: the baked VeeCode product-face file, wired into the chart's
-// global.dynamic.includes ahead of this script's output file. Both land at
-// includes level 0, so a package this regen re-emits that the face already
-// declares is a FATAL same-level collision for the installer
-// (install-dynamic-plugins.py:333-334) — see loadFacePackageKeys().
+// The baked face is included at level 0. Marketplace rows for its plugins are
+// emitted at level 1 with the face reference so the installer keeps the face's
+// package version while applying the row's disabled flag.
 const DEFAULT_FACE_FILE = '/opt/app-root/src/dynamic-plugins.veecode.yaml';
+const PROTECTED_MARKETPLACE_FACE_PLUGINS = [
+  'devportal-marketplace-backend',
+  'devportal-marketplace-frontend-dynamic',
+  'devportal-pending-changes-dynamic',
+  'red-hat-developer-hub-backstage-plugin-catalog-backend-module-extensions',
+];
 
 // Bounded timeouts so an unreachable/slow DB DEGRADES (empty/unchanged file)
 // instead of hanging the boot. Without connectionTimeoutMillis, pg.connect()
@@ -369,8 +373,8 @@ function rowsToPlugins(rows, effectiveRefs = new Map()) {
 // registry/image path, plus the `!<plugin-path>` selector when the ref has one,
 // with the tag/digest stripped; npm-style refs compare with any trailing
 // `@<version>` stripped; local `./` paths compare as-is (there is nothing to
-// strip). The installer detects a selector-less ref's plugin path from the image,
-// so such a ref never matches a selector-bearing one here.
+// strip). Selector-less OCI refs get a repository-only key here; callers that
+// need the installer's selector-aware identity use samePlugin instead.
 function normalizePluginKey(ref) {
   if (typeof ref !== 'string') return ref;
   if (ref.startsWith('./')) return ref;
@@ -383,11 +387,9 @@ function normalizePluginKey(ref) {
   return at > 0 ? ref.slice(0, at) : ref;
 }
 
-// Best-effort key for a not-yet-transformed DB row: what package this row would
-// resolve to, without paying for digest resolution. Mirrors rowsToPlugins'
-// precedence (config_yaml's own `package:` wins, else the row's package_name)
-// but stays pre-digest — this only needs to answer "is this the face's package",
-// which normalizePluginKey settles regardless of which version is pinned.
+// Best-effort package ref for a DB row before digest resolution. It mirrors
+// rowsToPlugins' precedence (`config_yaml`'s `package:` wins, else
+// `package_name`); callers use samePlugin to compare the ref with face entries.
 function rowPackageRef(row) {
   const raw = row.config_yaml != null ? String(row.config_yaml).trim() : '';
   if (raw) {
@@ -418,49 +420,97 @@ function preferredRow(current, candidate) {
 }
 
 // Rows are keyed by their full reference, so installing a newer reference of an
-// installed plugin leaves the old row next to the new one. The installer keys an
-// OCI plugin by its registry path and selector, without the tag or digest, and
-// fails the whole install on two enabled entries with that key
-// (merger.cjs.js entryKeyOf and recordEntryState, installer 0.4.1). Keep one OCI
-// row per key, the one preferredRow picks. Rows that are not OCI refs pass
-// through: normalizePluginKey only approximates the installer's npm key, and
-// strips at the last "@" of a tarball URL that the installer keeps whole. The
-// dropped rows are only left out of the generated YAML; nothing is written here.
+// installed plugin leaves the old row next to the new one. The installer fails
+// the install when two enabled entries use the same plugin key, so reduce OCI
+// duplicates before resolution. Do not chain samePlugin comparisons here: its
+// selector-less match can bridge two distinct selectors. Group by repository
+// and exact selector, joining selector-less rows only when there is one
+// selector. Omit them when multiple selectors could match because the
+// installer rejects a path-less reference to a multi-plugin image. Non-OCI
+// rows pass through because normalizePluginKey only approximates the
+// installer's npm key and strips at the last "@" of a tarball URL that the
+// installer keeps whole.
 function keepOneRowPerPlugin(rows) {
-  const keys = rows.map(row => {
-    const ref = rowPackageRef(row);
-    return splitOciRef(ref) ? normalizePluginKey(ref) : null;
-  });
-  const preferred = new Map();
-  rows.forEach((row, i) => {
-    if (!keys[i]) return;
-    const current = preferred.get(keys[i]);
-    preferred.set(keys[i], current ? preferredRow(current, row) : row);
-  });
-  return rows.filter((row, i) => {
-    const kept = keys[i] && preferred.get(keys[i]);
-    if (!kept || kept === row) return true;
-    warn(
-      `dropping "${row.package_name}": "${kept.package_name}" names the same plugin and is preferred`,
+  const byRepository = new Map();
+  for (const row of rows) {
+    const parts = splitOciRef(rowPackageRef(row));
+    if (!parts) continue;
+
+    const repository = ociRepository(parts.image);
+    let group = byRepository.get(repository);
+    if (!group) {
+      group = { rows: [], selectorless: [], bySelector: new Map() };
+      byRepository.set(repository, group);
+    }
+    group.rows.push({ row, selector: parts.selector });
+    if (parts.selector === null) {
+      group.selectorless.push(row);
+      continue;
+    }
+    const selectorRows = group.bySelector.get(parts.selector) || [];
+    selectorRows.push(row);
+    group.bySelector.set(parts.selector, selectorRows);
+  }
+
+  const kept = new Set();
+  const formatNames = candidates =>
+    candidates.map(row => `"${row.package_name}"`).join(', ');
+  const keepPreferred = candidates => {
+    if (candidates.length === 0) return;
+    let preferred = candidates[0];
+    for (const candidate of candidates.slice(1)) {
+      preferred = preferredRow(preferred, candidate);
+    }
+    kept.add(preferred);
+    for (const row of candidates) {
+      if (row === preferred) continue;
+      warn(
+        `dropping "${row.package_name}": "${preferred.package_name}" names the same plugin and is preferred`,
+      );
+    }
+  };
+
+  for (const [repository, group] of byRepository) {
+    if (group.bySelector.size > 1) {
+      if (group.selectorless.length > 0) {
+        const selectorRows = [...group.bySelector.values()].flat();
+        warn(
+          `omitting ambiguous selector-less row(s) ${formatNames(group.selectorless)} ` +
+            `for OCI repository "${repository}"; these rows match selector-bearing ` +
+            `row(s) ${formatNames(selectorRows)} for distinct plugins. The installer ` +
+            'rejects a path-less reference to a multi-plugin image',
+        );
+      }
+      for (const selectorRows of group.bySelector.values()) {
+        keepPreferred(selectorRows);
+      }
+      continue;
+    }
+
+    const onlySelector = group.bySelector.keys().next().value;
+    keepPreferred(
+      group.rows
+        .filter(
+          ({ selector }) => selector === null || selector === onlySelector,
+        )
+        .map(({ row }) => row),
     );
-    return false;
+  }
+
+  return rows.filter(row => {
+    if (!splitOciRef(rowPackageRef(row))) return true;
+    return kept.has(row);
   });
 }
 
-// Reads the baked product face file so the regen can exclude any package it already
-// declares. Missing/unreadable/unparseable is NOT fatal here — this script must keep
-// working in local/dev contexts that never bake a face file. The hard guarantee
-// against a same-level-0 collision lives installer-side (the fail-closed include on
-// a missing face file, plus its own fatal-duplicate check); this is best-effort
-// dedup, not the safety net.
-function loadFacePackageKeys() {
+function loadFaceEntries() {
   const faceFile = process.env.DEVPORTAL_FACE_FILE || DEFAULT_FACE_FILE;
   let raw;
   try {
     raw = fs.readFileSync(faceFile, 'utf8');
   } catch (e) {
     warn(
-      `could not read face file ${faceFile} (${e.message}); marketplace regen dedup disabled for this boot`,
+      `could not read face file ${faceFile} (${e.message}); rows for face plugins are handled as any other row`,
     );
     return null;
   }
@@ -469,17 +519,66 @@ function loadFacePackageKeys() {
     parsed = YAML.parse(raw);
   } catch (e) {
     warn(
-      `face file ${faceFile} is not valid YAML (${e.message}); marketplace regen dedup disabled for this boot`,
+      `face file ${faceFile} is not valid YAML (${e.message}); rows for face plugins are handled as any other row`,
     );
     return null;
   }
   const facePlugins =
     parsed && Array.isArray(parsed.plugins) ? parsed.plugins : [];
-  const keys = new Set();
-  for (const p of facePlugins) {
-    if (p && typeof p.package === 'string') keys.add(normalizePluginKey(p.package));
+  return facePlugins.filter(p => p && typeof p.package === 'string');
+}
+
+function samePlugin(a, b) {
+  const left = splitOciRef(a);
+  const right = splitOciRef(b);
+  if (
+    left &&
+    right &&
+    ociRepository(left.image) === ociRepository(right.image)
+  ) {
+    return (
+      left.selector === null ||
+      right.selector === null ||
+      left.selector === right.selector
+    );
   }
-  return keys;
+  return normalizePluginKey(a) === normalizePluginKey(b);
+}
+
+function hasPluginConfig(row) {
+  if (row.config_yaml == null) return false;
+  try {
+    const parsed = YAML.parse(String(row.config_yaml));
+    return (
+      parsed &&
+      typeof parsed === 'object' &&
+      !Array.isArray(parsed) &&
+      Object.hasOwn(parsed, 'pluginConfig')
+    );
+  } catch {
+    return false;
+  }
+}
+
+function protectedMarketplacePluginName(packageRef) {
+  const candidates = new Set();
+  const addCandidate = value => {
+    if (typeof value !== 'string' || !value) return;
+    const name = value.replace(/\/+$/, '').split('/').pop();
+    if (!name) return;
+    candidates.add(name);
+    candidates.add(name.replace(/-dynamic$/, ''));
+  };
+  const oci = splitOciRef(packageRef);
+  if (oci) {
+    addCandidate(ociRepository(oci.image));
+    addCandidate(oci.selector);
+  } else {
+    addCandidate(packageRef);
+  }
+  return PROTECTED_MARKETPLACE_FACE_PLUGINS.find(name =>
+    candidates.has(name) || candidates.has(name.replace(/-dynamic$/, '')),
+  );
 }
 
 function writeAtomic(filePath, contents) {
@@ -574,33 +673,58 @@ async function main() {
     `pluginDivisionMode=${mode} — read "${schema}".${TABLE} in ${where} (${rows.length} row(s))`,
   );
 
-  // OD1 phase A: exclude face-owned rows BEFORE the digest-resolution loop below,
-  // not after. A package the face already declares is being dropped anyway, so
-  // it must never cost a registry call or a skip warning in that loop. See
-  // rowPackageRef() / loadFacePackageKeys() / normalizePluginKey() above.
-  const facePackageKeys = loadFacePackageKeys();
-  if (facePackageKeys) {
-    const beforeCount = rows.length;
-    rows = rows.filter(row => {
-      const isFacePackage = facePackageKeys.has(normalizePluginKey(rowPackageRef(row)));
-      if (isFacePackage) {
-        log(
-          `excluding "${row.package_name}" from ${outFile}: declared in product face file`,
+  const faceEntries = loadFaceEntries();
+  const faceBest = new Map();
+  if (faceEntries) {
+    const nonFaceRows = [];
+    for (const row of rows) {
+      const matches = faceEntries.filter(entry =>
+        samePlugin(rowPackageRef(row), entry.package),
+      );
+      const matchedSelectors = new Set(
+        matches
+          .map(entry => splitOciRef(entry.package)?.selector)
+          .filter(selector => selector !== null && selector !== undefined),
+      );
+      if (matchedSelectors.size > 1) {
+        warn(
+          `marketplace row "${row.package_name}" ambiguously matches face entries ${matches.map(entry => `"${entry.package}"`).join(', ')} with distinct selectors; treating it as a non-face row`,
+        );
+        nonFaceRows.push(row);
+        continue;
+      }
+      const face = matches[0];
+      if (!face) {
+        nonFaceRows.push(row);
+        continue;
+      }
+      if (hasPluginConfig(row)) {
+        warn(
+          `ignoring the pluginConfig of "${row.package_name}": the product face owns the configuration of "${face.package}"`,
         );
       }
-      return !isFacePackage;
-    });
-    if (rows.length !== beforeCount) {
-      log(
-        `dedup against the product face file removed ${
-          beforeCount - rows.length
-        } selection(s)`,
+      const protectedName = protectedMarketplacePluginName(face.package);
+      if (protectedName && Boolean(row.disabled)) {
+        warn(
+          `ignoring disabled marketplace row "${row.package_name}" for protected marketplace face plugin "${face.package}"; protected plugins: ${PROTECTED_MARKETPLACE_FACE_PLUGINS.join(', ')}`,
+        );
+        continue;
+      }
+      const current = faceBest.get(face.package);
+      faceBest.set(
+        face.package,
+        current ? preferredRow(current, row) : row,
       );
     }
+    rows = nonFaceRows;
   }
+  const faceSelections = [...faceBest.entries()].map(([packageRef, row]) => {
+    log(
+      `face default "${packageRef}": marketplace row "${row.package_name}" sets disabled=${Boolean(row.disabled)}`,
+    );
+    return { package: packageRef, disabled: Boolean(row.disabled) };
+  });
 
-  // Same placement as the face dedup: a dropped row must not cost a registry
-  // call, and the summary below counts only the rows left.
   rows = keepOneRowPerPlugin(rows);
 
   // ── T1.3: pin every enabled OCI selection to a digest ─────────────────────
@@ -673,12 +797,10 @@ async function main() {
     `digest-pinned ${pinned} of ${rows.length} selection(s) (${nonOci} non-OCI, ${skipped.size} skipped, ${disabled} disabled)`,
   );
 
-  // Face-owned rows were already excluded above, before digest resolution —
-  // rowsToPlugins never sees them.
   const plugins = rowsToPlugins(
     rows.filter(row => !skipped.has(row)),
     effectiveRefs,
-  );
+  ).concat(faceSelections);
 
   try {
     // 2.x's entrypoint guarantees DEVPORTAL_DB_PATH exists before this script
@@ -717,6 +839,6 @@ module.exports = {
   pgClientConfig,
   rowsToPlugins,
   normalizePluginKey,
-  loadFacePackageKeys,
+  samePlugin,
   rowPackageRef,
 };
