@@ -4,6 +4,7 @@ set -uo pipefail
 REF=${1:-main}
 FAILURES=0
 PACKAGE_CHECKS=0
+NO_PACKAGE_CHECKS=0
 TEMP_DIR=$(mktemp -d)
 trap 'rm -rf "$TEMP_DIR"' EXIT
 
@@ -56,10 +57,14 @@ if ! skopeo copy --src-no-creds "docker://$INDEX_IMAGE" "dir:$INDEX_DIR" >/dev/n
   echo "cannot fetch catalog index $INDEX_IMAGE"
   exit 1
 fi
-mapfile -t INDEX_LAYERS < <(jq -er '.layers[].digest | sub("^sha256:"; "")' "$INDEX_DIR/manifest.json") || {
+INDEX_LAYERS_TEXT=$(jq -er '.layers[].digest | sub("^sha256:"; "")' "$INDEX_DIR/manifest.json") || {
   echo "cannot read catalog index layers"
   exit 1
 }
+INDEX_LAYERS=()
+if [ -n "$INDEX_LAYERS_TEXT" ]; then
+  mapfile -t INDEX_LAYERS <<<"$INDEX_LAYERS_TEXT"
+fi
 for layer in "${INDEX_LAYERS[@]}"; do
   if ! tar -xzf "$INDEX_DIR/$layer" -C "$UNPACKED_DIR"; then
     echo "cannot unpack catalog index layer $layer"
@@ -73,10 +78,14 @@ if [ ! -f "$DPDY_FILE" ] || [ ! -d "$PACKAGES_DIR" ]; then
   echo "catalog index is missing dynamic-plugins.default.yaml or extensions/packages"
   exit 1
 fi
-mapfile -t DPDY_PACKAGES < <(yq -r '.plugins[].package' "$DPDY_FILE") || {
+DPDY_PACKAGES_TEXT=$(yq -r '.plugins[].package' "$DPDY_FILE") || {
   echo "cannot parse catalog index dynamic-plugins.default.yaml"
   exit 1
 }
+DPDY_PACKAGES=()
+if [ -n "$DPDY_PACKAGES_TEXT" ]; then
+  mapfile -t DPDY_PACKAGES <<<"$DPDY_PACKAGES_TEXT"
+fi
 mapfile -t PACKAGE_FILES < <(find "$PACKAGES_DIR" -maxdepth 1 -type f -name '*.yaml' -print | sort)
 PACKAGE_ROWS_TEXT=$(yq -r '[.metadata.name // "", .spec.dynamicArtifact // "", .spec.version // ""] | @tsv' "${PACKAGE_FILES[@]}") || {
   echo "cannot parse catalog Package files"
@@ -155,7 +164,34 @@ for face_package in "${FACE_PACKAGES[@]}"; do
   done
 
   if [ "${#MATCH_REFS[@]}" -eq 0 ]; then
-    echo "[skip] no catalog Package for $FACE_REPOSITORY"
+    if [ "$FACE_REPOSITORY" != "quay.io/veecode/veecode-theme" ]; then
+      fail "no catalog Package for unlisted face entry $FACE_REPOSITORY"
+      continue
+    fi
+
+    source_tag=$(awk -v repository="$FACE_REPOSITORY" '
+      index($0, repository "@") && match($0, /# was :[^[:space:]]+/) {
+        print substr($0, RSTART + 7, RLENGTH - 7)
+        exit
+      }
+    ' "$FACE_PATH")
+    if [ -z "$source_tag" ]; then
+      fail "cannot read source tag for no-Package face entry $FACE_REPOSITORY"
+      continue
+    fi
+
+    source_ref="$FACE_REPOSITORY:$source_tag"
+    if ! source_digest=$(skopeo inspect --no-creds --format '{{.Digest}}' "docker://$source_ref"); then
+      fail "cannot resolve no-Package source tag $source_ref"
+      continue
+    fi
+    if [ "$FACE_DIGEST" != "$source_digest" ]; then
+      fail "face digest $FACE_DIGEST does not match no-Package source tag $source_ref digest $source_digest"
+      continue
+    fi
+
+    NO_PACKAGE_CHECKS=$((NO_PACKAGE_CHECKS + 1))
+    echo "[ok] direct digest check $FACE_REPOSITORY@$FACE_DIGEST matches $source_ref"
     continue
   fi
   if [ "${#MATCH_REFS[@]}" -ne 1 ]; then
@@ -208,7 +244,7 @@ done
 
 [ "$PACKAGE_CHECKS" -gt 0 ] || fail "no face Package references were checked against the catalog index"
 if [ "$FAILURES" -eq 0 ]; then
-  echo "All face pins resolve; $PACKAGE_CHECKS catalog Package refs match their digests and artifact versions."
+  echo "All face pins resolve; $PACKAGE_CHECKS catalog Package refs match their digests and artifact versions; $NO_PACKAGE_CHECKS no-Package face digests match their source tags."
   exit 0
 fi
 echo "$FAILURES face pin check(s) failed."

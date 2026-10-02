@@ -35,9 +35,13 @@ moving tag `bs_<backstage>`. Both stay valid while the image keeps the same Back
 3. **Check the Backstage line.** `backstage.json` on `devportal-core` `main` must match the running line (1.52.0
    today). Knex migrations only move forward, so an image from an older line cannot boot on a database a newer one
    migrated.
-4. **Check the face pins.** Run `scripts/check-face-pins.sh main`. It confirms the face has the 20 entries the
-   Containerfile gate requires, and that every OCI digest the face pins still exists on quay. A garbage-collected
-   pin aborts the installer, and the pod never leaves init.
+4. **Check the face pins.** Run `scripts/check-face-pins.sh main`. The gate gets the catalog-index image from
+   `devportal-chart`, fetches and unpacks it, then checks that all 20 face digests exist and no face repository
+   appears in the index's `dynamic-plugins.default.yaml`. For each face entry with a catalog Package, it compares
+   the Package digest with the face digest and `spec.version` with the artifact annotation. The current
+   `veecode-theme` entry has no catalog Package, so the gate compares its face digest with the source tag in its
+   `# was :<tag>` comment. The check needs GitHub and Quay access, network, and `gh`, `yq`, `skopeo`, `jq`, `curl`,
+   `base64`, and `tar`. A missing pin or mismatch stops this release because the installer cannot load that artifact.
 5. **Know what ships.** List the commits since the previous image. The last `publish-edge.yaml` run's `headSha`
    marks it, because the workflow creates no git tag:
    `gh run list -R veecode-platform/devportal-core -w publish-edge.yaml -L 3 --json headSha,createdAt`.
