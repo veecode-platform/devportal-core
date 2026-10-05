@@ -367,9 +367,9 @@ plugins:
                 priority: 55
                 props:
                   pollingIntervalMs: 30000
-# VeeCode marketplace frontend at /marketplace: the 0.3.0 per-plugin artifact,
-# built for Backstage 1.52.0 (tag bs_1.52.0__0.3.0).
-- package: oci://quay.io/veecode/devportal-marketplace-frontend-dynamic@sha256:311de8798d0db945e0ed0f333864ff260d394fe41336cb554aeae924d4a98e16!devportal-marketplace-frontend-dynamic # was :bs_1.52.0__0.3.0
+# VeeCode marketplace frontend at /marketplace: the 0.3.1 per-plugin artifact,
+# built for Backstage 1.52.0 (tag bs_1.52.0__0.3.1).
+- package: oci://quay.io/veecode/devportal-marketplace-frontend-dynamic@sha256:2d3ffc77eac7436c375b7fe8068a5377eadfb6f0b79d520ed0672342ae467ffc!devportal-marketplace-frontend-dynamic # was :bs_1.52.0__0.3.1
   disabled: false
   pluginConfig:
     dynamicPlugins:
