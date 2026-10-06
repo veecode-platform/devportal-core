@@ -33,9 +33,7 @@
     }
   },
   "resolutions": {
-    "proxy-addr": "2.0.8",
-    "refractor@npm:3.6.0/prismjs": "^1.30.0",
-    "vm2": "3.12.2"
+    "refractor@npm:3.6.0/prismjs": "^1.30.0"
   },
   "packageManager": "yarn@4.17.1"
 }
