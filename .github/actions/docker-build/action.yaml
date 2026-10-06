@@ -75,25 +75,63 @@ runs:
         echo "LOCAL_CACHE_DIR=./hermeto-cache/$(basename "$COMPONENT_DIR")" >> $GITHUB_ENV
         echo "COMPONENT_ABS_DIR=${GITHUB_WORKSPACE}/${COMPONENT_DIR}" >> $GITHUB_ENV
 
-    - name: Cache dependencies with hermeto
+    # VeeCode: the prefetched dependencies are cached by the lockfiles that define them and the
+    # hermeto image that fetched them, so a build whose inputs did not change skips the fetch
+    # (about 6 minutes per architecture). A miss fetches exactly as before.
+    - name: Key the hermeto dependency cache
+      id: hermeto-key
       shell: bash
-      run: |        
+      run: |
+        set -euo pipefail
+        podman pull -q "$HERMETO_IMAGE" > /dev/null
+        echo "hermeto=$(podman image inspect --format '{{.Digest}}' "$HERMETO_IMAGE" | tr ':' '-')" >> "$GITHUB_OUTPUT"
+        # actions/cache rejects a path with a '.' segment, which LOCAL_CACHE_DIR has for '.'
+        echo "path=$(realpath -m "$LOCAL_CACHE_DIR/output")" >> "$GITHUB_OUTPUT"
+
+    - name: Restore the hermeto dependency cache
+      id: hermeto-cache
+      uses: actions/cache/restore@2c8a9bd7457de244a408f35966fab2fb45fda9c8 # v6.0.0
+      with:
+        path: ${{ steps.hermeto-key.outputs.path }}
+        key: hermeto-${{ runner.arch }}-${{ steps.hermeto-key.outputs.hermeto }}-${{ hashFiles('yarn.lock', 'dynamic-plugins/yarn.lock', 'rpms.in.yaml', 'rpms.lock.yaml', 'python/requirements*.txt', 'python/requirements*.in', 'python/hermeto_*.json') }}
+
+    - name: Fetch dependencies with hermeto
+      id: hermeto-fetch
+      if: steps.hermeto-cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
         set -ex
 
         echo "::group::Creating local cache directory"
         mkdir -p ${{ env.LOCAL_CACHE_DIR }} || echo "Failed to create local cache directory"
         echo "::endgroup::"
-        
+
         echo "::group::Fetching dependencies with hermeto"
         # Build hermeto cache for rpm, yarn, and pip
-        podman run --rm -v "$PWD:/source:z" -v "$LOCAL_CACHE_DIR:/cachi2:z" -w /source "$HERMETO_IMAGE" \
+        if podman run --rm -v "$PWD:/source:z" -v "$LOCAL_CACHE_DIR:/cachi2:z" -w /source "$HERMETO_IMAGE" \
           --log-level DEBUG \
           fetch-deps --dev-package-managers \
           --source . \
           --output /cachi2/output \
-          '[{"type": "rpm", "path": "."}, {"type": "yarn","path": "."}, {"type": "yarn","path": "./dynamic-plugins"}, {"type": "pip","path": "./python", "allow_binary": "false"}]'  || echo "Fetch-deps failed"
+          '[{"type": "rpm", "path": "."}, {"type": "yarn","path": "."}, {"type": "yarn","path": "./dynamic-plugins"}, {"type": "pip","path": "./python", "allow_binary": "false"}]'; then
+          echo "fetched=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "Fetch-deps failed"
+        fi
         echo "::endgroup::"
-        
+
+    - name: Save the hermeto dependency cache
+      if: steps.hermeto-fetch.outputs.fetched == 'true'
+      uses: actions/cache/save@2c8a9bd7457de244a408f35966fab2fb45fda9c8 # v6.0.0
+      with:
+        path: ${{ steps.hermeto-key.outputs.path }}
+        key: ${{ steps.hermeto-cache.outputs.cache-primary-key }}
+
+    - name: Prepare the hermeto environment
+      shell: bash
+      run: |
+        set -ex
+
         if [ -d ${{ env.LOCAL_CACHE_DIR }}/output ]; then
           echo "::group::Generating environment file"
           
