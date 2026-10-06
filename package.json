@@ -80,7 +80,6 @@
     "js-yaml@npm:^4.1.1": "4.3.2",
     "js-yaml@npm:^4.2.0": "4.3.2",
     "multer": "2.3.0",
-    "proxy-addr": "2.0.8",
     "refractor@npm:3.6.0/prismjs": "^1.30.0",
     "tar@npm:^7.5.4": "7.5.22",
     "tar@npm:^7.5.6": "7.5.22",
