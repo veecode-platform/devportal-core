@@ -229,9 +229,10 @@ scratch directories on the build machine.
 - **A tag whose `appVersion` lags looks fine until `helm list` reports the wrong version.** `release-status.sh` flags
   it.
 - **Face pins die when quay garbage-collects.** Step 1 anchors them, and the pre-flight checks them.
-- **A global yarn resolution breaks the hermetic build.** It rewrites the lockfile key, and the wrappers'
-  `export-dynamic` runs its own `yarn install` with the old range and no network. Move a transitive dependency inside
-  its range with `yarn up -R`; use a resolution only to leave the range, and only at the root.
+- **A global yarn resolution can break the hermetic build on a line that has the dynamic-plugin wrappers.** It rewrites
+  the lockfile key, and the wrappers' `export-dynamic` runs its own `yarn install` with the old range and no network.
+  Move a transitive dependency inside its range with `yarn up -R`; use a resolution only to leave the range, and only at
+  the root. The 1.54 line has no wrapper workspace, so a root resolution there reaches only the root lockfile install.
 - **The vulnerability database moves.** A released image can turn red overnight with no change; the nightly
   Qualification on `:edge` shows it first.
 - **GitHub API 5xx on the release step.** Wait a few minutes and rerun the workflow once. Never create the release by

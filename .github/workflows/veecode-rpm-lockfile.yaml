@@ -24,7 +24,7 @@ permissions:
 
 env:
   CONTAINERFILE_PATH: build/containerfiles/Containerfile
-  RPM_LOCKFILE_PROTOTYPE_VERSION: v0.30.1
+  RPM_LOCKFILE_PROTOTYPE_COMMIT: bd52a866369b2c6cc701e8d43ca8665fed51e0c7 # tag v0.30.1
 
 jobs:
   regenerate:

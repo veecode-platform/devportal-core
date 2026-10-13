@@ -11,7 +11,7 @@ metadata:
   tags: [fork, rhdh, backstage]
   links:
     - url: https://github.com/redhat-developer/rhdh
-      title: "Upstream: redhat-developer/rhdh (weekly automated sync)"
+      title: "Upstream: redhat-developer/rhdh (automated sync disabled)"
 spec:
   type: service
   lifecycle: production
