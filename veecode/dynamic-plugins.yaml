@@ -1,7 +1,7 @@
 # /opt/app-root/src/dynamic-plugins.yaml — baked default, additive (OD1 phase A)
 #
 # Fixed file name: the npm installer
-# (@red-hat-developer-hub/cli-module-install-dynamic-plugins@0.4.0) reads this
+# (@red-hat-developer-hub/cli-module-install-dynamic-plugins@0.5.0) reads this
 # same fixed dynamic-plugins.yaml at CWD via the generated
 # install-dynamic-plugins.sh wrapper. The 2.x image always shipped an
 # equivalent baked file; the operator never had to create it from scratch
