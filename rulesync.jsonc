@@ -13,7 +13,7 @@
   "outputRoots": [
     "."
   ],
-  "delete": true,
+  "delete": false,
   "verbose": false,
   "global": false,
   "simulateCommands": false
