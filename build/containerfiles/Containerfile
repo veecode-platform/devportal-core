@@ -14,8 +14,8 @@
 # limitations under the License.
 
 # Stage 1 - Build nodejs skeleton
-# https://registry.access.redhat.com/ubi9/nodejs-24
-FROM registry.access.redhat.com/ubi9/nodejs-24:9.8-1790751326@sha256:aee02b1bcf5b94165191883933b51dd0653c07e990a7d83fa5d3a37f7f05ab59 AS skeleton
+# https://registry.access.redhat.com/ubi10/nodejs-24
+FROM registry.access.redhat.com/ubi10/nodejs-24:10.2-1789546356@sha256:807015f2d15475fe09194cc9901e6e819470e0be53ca4433910625c73cc75736 AS skeleton
 # hadolint ignore=DL3002
 USER 0
 
@@ -28,23 +28,23 @@ RUN dnf install -q -y --allowerasing --nobest \
   findutils fonts-filesystem fuse-common fuse-overlayfs fuse3 fuse3-libs gawk gcc gcc-c++ gdb-gdbserver gdbm-libs gettext gettext-libs git git-core git-core-doc glib2 glibc \
   glibc-common glibc-devel glibc-headers glibc-langpack-en glibc-locale-source glibc-minimal-langpack gmp gnupg2 gnutls gobject-introspection gpgme grep groff-base gzip \
   ima-evm-utils iproute json-c json-glib kernel-headers keyutils keyutils-libs kmod kmod-libs krb5-libs langpacks-core-en langpacks-core-font-en langpacks-en less \
-  libacl libarchive libassuan libattr libblkid libbpf libcap libcap-ng libcbor libcom_err libcomps libcurl-minimal libdb libdnf libdnf-plugin-subscription-manager \
+  libacl libarchive libassuan libattr libblkid libbpf libcap libcap-ng libcbor libcom_err libcomps libcurl-minimal libdnf libdnf-plugin-subscription-manager \
   libeconf libedit libevent libfdisk libffi libfido2 libgcc libgcrypt libgomp libgpg-error libidn2 libksba libmnl libmodulemd libmount libmpc libnet libnghttp2 libnl3 \
-  libpipeline libpkgconf libpwquality librepo libreport-filesystem librhsm libseccomp libselinux libsemanage libsepol libsigsegv libslirp libsmartcols libsolv libstdc++ libstdc++-devel \
+  libpipeline libpkgconf libpwquality librepo librhsm libseccomp libselinux libsemanage libsepol libslirp libsmartcols libsolv libstdc++ libstdc++-devel \
   libtasn1 libunistring libuser libutempter libuuid libverto libxcrypt libxcrypt-compat libxcrypt-devel libxml2 libyaml libzstd lua-libs lz4-libs make man mpfr \
   ncurses ncurses-base ncurses-libs nettle npth nss_wrapper-libs openldap \
-  openssh openssh-clients openssl openssl-devel openssl-fips-provider openssl-fips-provider-so openssl-libs p11-kit p11-kit-trust pam passwd pcre pcre2 pcre2-syntax \
+  openssh openssh-clients openssl openssl-devel openssl-fips-provider openssl-fips-provider-so openssl-libs p11-kit p11-kit-trust pam passwd pcre2 pcre2-syntax \
   perl perl-AutoLoader perl-B perl-base perl-Carp perl-Class-Struct perl-constant perl-Data-Dumper perl-Digest perl-Digest-MD5 perl-DynaLoader perl-Encode perl-Errno perl-Error \
   perl-Exporter perl-Fcntl perl-File-Basename perl-File-Find perl-File-Path perl-File-stat perl-File-Temp perl-FileHandle perl-Getopt-Long perl-Getopt-Std perl-Git perl-HTTP-Tiny \
   perl-interpreter perl-IO perl-IO-Socket-IP perl-IO-Socket-SSL perl-IPC-Open3 perl-lib perl-libnet perl-libs perl-MIME-Base64 perl-Mozilla-CA perl-mro perl-NDBM_File perl-Net-SSLeay \
   perl-overload perl-overloading perl-parent perl-PathTools perl-Pod-Escapes perl-Pod-Perldoc perl-Pod-Simple perl-Pod-Usage perl-podlators perl-POSIX perl-Scalar-List-Utils perl-SelectSaver \
   perl-Socket perl-Storable perl-subs perl-Symbol perl-Term-ANSIColor perl-Term-Cap perl-TermReadKey perl-Text-ParseWords perl-Text-Tabs+Wrap perl-Time-Local perl-URI perl-vars pkgconf \
-  pkgconf-m4 pkgconf-pkg-config popt procps-ng protobuf-c psmisc python-unversioned-command python3 python3-chardet python3-cloud-what python3-dateutil python3-dbus python3-decorator \
+  pkgconf-m4 pkgconf-pkg-config popt procps-ng protobuf-c psmisc python-unversioned-command python3 python3-cloud-what python3-dateutil python3-dbus python3-decorator \
   python3-dnf python3-dnf-plugins-core python3-gobject-base python3-gobject-base-noarch python3-gpg python3-hawkey python3-idna python3-iniparse python3-inotify python3-libcomps \
-  python3-libdnf python3-librepo python3-libs python3-pip python3-pip-wheel python3-pysocks python3-requests python3-rpm python3-setuptools python3-setuptools-wheel python3-six \
+  python3-libdnf python3-librepo python3-libs python3-pip python3-pip-wheel python3-requests python3-rpm python3-setuptools python3-setuptools-wheel python3-six \
   python3-subscription-manager-rhsm python3-systemd python3-urllib3 readline redhat-release rootfiles rpm rpm-build-libs rpm-libs rpm-plugin-selinux rpm-sign-libs rsync scl-utils \
-  sed selinux-policy selinux-policy-targeted setup shadow-utils skopeo slirp4netns sqlite-libs subscription-manager subscription-manager-rhsm-certificates systemd systemd-libs \
-  systemd-pam systemd-rpm-macros tar tcl tpm2-tss tzdata unzip usermode util-linux util-linux-core vim-filesystem vim-minimal virt-what which xz xz-libs yajl yum zlib zlib-devel && \
+  sed selinux-policy selinux-policy-targeted setup shadow-utils skopeo sqlite-libs subscription-manager subscription-manager-rhsm-certificates systemd systemd-libs \
+  systemd-pam systemd-rpm-macros tar tcl tpm2-tss tzdata unzip usermode util-linux util-linux-core vim-filesystem vim-minimal virt-what which xz xz-libs yum zlib zlib-devel && \
   \
   # '(micro)dnf update -y' not allowed in Konflux+Cachi2: instead use renovate or https://github.com/konflux-ci/rpm-lockfile-prototype to update the rpms.lock.yaml file
   dnf clean all
@@ -146,32 +146,6 @@ RUN echo "=== YARN BUILD ==="; FAILED=0; \
   done; \
   if [[ $FAILED -gt 0 ]]; then exit $FAILED; fi
 
-WORKDIR $CONTAINER_SOURCE/dynamic-plugins
-
-RUN echo "=== DYNAMIC PLUGIN YARN INSTALL ==="; FAILED=0; "$YARN" install --immutable || FAILED=1; \
-  for d in /tmp/xfs-*; do if [[ -f ${d}/build.log ]]; then \
-  (( FAILED = FAILED + 1 )); \
-  echo; echo $d; \
-  echo "!!! DYNAMIC PLUGIN YARN INSTALL FAILED !!!"; \
-  cat ${d}/build.log; \
-  fi; done; \
-  if [[ $FAILED -gt 0 ]]; then exit $FAILED; fi
-
-RUN echo "=== EXPORT DYNAMIC PLUGINS ==="; FAILED=0; \
-  "$YARN" export-dynamic || FAILED=1; \
-  for d in $(find . -name yarn-install.log); do \
-  (( FAILED = FAILED + 1 )); echo; echo $d; echo "======"; cat ${d}; \
-  done; \
-  if [[ $FAILED -gt 0 ]]; then exit $FAILED; fi
-
-RUN echo "=== YARN COPY DYNAMIC PLUGINS in $(pwd) ==="; "$YARN" copy-dynamic-plugins dist
-
-WORKDIR $CONTAINER_SOURCE
-
-# Clean up dynamic plugins sources:
-# Only keep the dist sub-folder in the dynamic-plugins folder
-RUN echo "=== DELETE DYNAMIC PLUGINS/* (except dist/) from $(pwd) ==="; find dynamic-plugins -maxdepth 1 -mindepth 1 -type d -not -name dist -exec rm -Rf {} \;
-
 # dump console logs if they have errors
 RUN hadFail=0; for d in $(find /tmp -name "yarn*log*" || true) $(find /tmp/xfs-*  -name build.log || true); do \
   failsCheck="$(grep -E "Failed with errors|Failed to execute command|Failed to install|Failed to download|exit code 1" "$d")"; \
@@ -259,8 +233,8 @@ RUN hadFail=0; for d in $(find /tmp -name "yarn*log*" || true) $(find /tmp/xfs-*
 # Prevents duplicating the same dependencies in the final minimal image.
 # hadolint ignore=DL3013,DL3041,SC2086
 COPY $EXTERNAL_SOURCE_NESTED/python/ ./python/
-RUN dnf install -y python3.11 python3.11-pip python3.11-devel 1>/dev/null 2>&1 && \
-  python3.11 -m venv /opt/techdocs-venv && \
+RUN dnf install -y python3.12 python3.12-pip python3.12-devel 1>/dev/null 2>&1 && \
+  python3.12 -m venv /opt/techdocs-venv && \
   /opt/techdocs-venv/bin/pip install --no-cache-dir --upgrade pip setuptools pyyaml && \
   /opt/techdocs-venv/bin/pip install --no-cache-dir -r python/requirements.txt -r python/requirements-build.txt && \
   /opt/techdocs-venv/bin/mkdocs --version && \
@@ -274,8 +248,8 @@ RUN rm -rf \
   dist-types packages/app/.webpack-cache
 
 # Stage 5 - Build the runner image
-# https://registry.access.redhat.com/ubi9/nodejs-24-minimal
-FROM registry.access.redhat.com/ubi9/nodejs-24-minimal:9.8-1790647840@sha256:9785f7415bff723e0dfcb1b928d81a06bf004b6a1e8a941bd08983e61b577b46 AS runner
+# https://registry.access.redhat.com/ubi10/nodejs-24-minimal
+FROM registry.access.redhat.com/ubi10/nodejs-24-minimal:10.2-1789546862@sha256:c2e4d56d102ebb99edaaeee9d4a17d4ebda67ecc192af57f12752b265e7a67a6 AS runner
 USER 0
 
 ENV EXTERNAL_SOURCE_NESTED=.
@@ -287,9 +261,9 @@ WORKDIR $CONTAINER_SOURCE/
 #   export PIP_NO_INDEX=true
 
 # Runtime Python for techdocs (interpreter + skopeo only; mkdocs lives in the pre-built venv from techdocs stage)
-RUN microdnf install -y python3.11 skopeo 1>/dev/null 2>&1; \
-  alternatives --install /usr/bin/python python /usr/bin/python3.11 1 && \
-  alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1 && \
+RUN microdnf install -y python3.12 skopeo 1>/dev/null 2>&1; \
+  alternatives --install /usr/bin/python python /usr/bin/python3.12 1 && \
+  alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 1 && \
   microdnf clean all
 
 # Copy openssl binary from build stage (needed for dynamic plugin integrity verification)
@@ -302,8 +276,6 @@ COPY $EXTERNAL_SOURCE_NESTED/build/containerfiles/policy.json /etc/containers/po
 
 # Production app tree from cleanup stage (excludes monorepo sources/build artifacts)
 COPY --from=cleanup --chown=1001:1001 "$CONTAINER_SOURCE"/ ./
-# Embedded dynamic plugins and techdocs venv are built separately
-COPY --from=build --chown=1001:1001 "$CONTAINER_SOURCE"/dynamic-plugins/ ./dynamic-plugins/
 COPY --from=cleanup --chown=1001:1001 /opt/techdocs-venv /opt/techdocs-venv
 
 ENV PATH="/opt/techdocs-venv/bin:${PATH}"
@@ -314,9 +286,7 @@ COPY $EXTERNAL_SOURCE_NESTED/LICENSE /licenses/
 # Install the dynamic-plugins installer through yarn instead of fetching the
 # vendored .cjs from this repo. The `@red-hat-developer-hub/cli-module-install-dynamic-plugins`
 # dependency is declared in `packages/backend/package.json` so the bin
-# survives the `=== YARN WORKSPACES FOCUS ===` production install (the
-# earlier `=== DELETE DYNAMIC PLUGINS/* ===` step wipes
-# `dynamic-plugins/node_modules/` to keep only `dist/`). Hermeto already
+# survives the `=== YARN WORKSPACES FOCUS ===` production install. Hermeto
 # prefetches yarn deps for the repo root (the `{"type": "yarn", "path": "."}`
 # entry in the fetch-deps call in scripts/local-hermeto-build.sh), so this
 # works in the hermetic Konflux build with no infra change. The build-time
