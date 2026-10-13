@@ -71,7 +71,9 @@ runs:
       env:
         COMPONENT_DIR: ${{ inputs.componentDirectory }}
       run: |
-        echo "HERMETO_IMAGE=quay.io/konflux-ci/hermeto:latest" >> $GITHUB_ENV
+        # VeeCode: hermeto 0.63.0 (2026-10-13) ships no arm64 image, so the arm64 build cannot pull
+        # :latest. Pinned to 0.62.0, the last multi-arch release, until a release ships arm64 again.
+        echo "HERMETO_IMAGE=quay.io/konflux-ci/hermeto@sha256:79e498bf5a4f7f5bdb2ba9ee790d4a9a002f5ad3c95de0068d18df7a55f6c14c" >> $GITHUB_ENV
         echo "LOCAL_CACHE_DIR=./hermeto-cache/$(basename "$COMPONENT_DIR")" >> $GITHUB_ENV
         echo "COMPONENT_ABS_DIR=${GITHUB_WORKSPACE}/${COMPONENT_DIR}" >> $GITHUB_ENV
 
