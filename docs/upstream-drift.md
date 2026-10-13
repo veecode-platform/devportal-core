@@ -124,9 +124,9 @@ frontend system. The rows above that name this line describe its state.
   decision is made on them.
 - **Pre-step pin.** `4c4b6202` moves the config-loader pin in `.github/workflows/veecode-prestep-test.yaml` to
   `@backstage/config-loader@1.11.2`.
-- **Base images and headers.** `768562a4` and `215862d0` move both base images to the 10.2 builds that ship Node.js
-  24.21.0, with `.nvmrc` and `.nvm/releases/` following. The Containerfile skeleton stage fails unless the headers
-  tarball matches `node --version`, so these files must move together.
+- **Base images and headers.** `768562a4` moves both base images to the 10.2 builds that ship Node.js 24.21.0, and
+  `9a17d86d` moves `.nvmrc` and `.nvm/releases/` to match. The Containerfile skeleton stage fails unless the headers
+  tarball matches `node --version`, so these files must move together. `215862d0` regenerates `rpms.lock.yaml`.
 - **Upstream sync.** RHDH `main` is new-frontend-only after `3ac14d77`, so the weekly sync stops there.
   `upstream-sync.yaml` stays disabled (`disabled_manually` on 2026-10-13).
 - **Not yet run on this line.** The hermetic image build (`publish-edge.yaml` with `publish=false`).
