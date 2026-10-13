@@ -46,7 +46,7 @@ artifacts tagged `bs_<backstage>__<version>`, and the catalog index uses the mov
    rather than skip a number.
 2. **See where the last release stands.** Run `scripts/release-status.sh <current-image> <current-chart>`. Fix or
    finish any drift it shows first, because this release inherits it.
-3. **Check the Backstage line.** `backstage.json` on `devportal-core` `main` must match the running line (1.52.0
+3. **Check the Backstage line.** `backstage.json` on `devportal-core` `main` must match the running line (1.54.9
    today). Knex migrations only move forward, so an image from an older line cannot boot on a database a newer one
    migrated.
 4. **Check the face pins.** Run `scripts/check-face-pins.sh main` (set `FACE_FILE` to check an edited face before it
