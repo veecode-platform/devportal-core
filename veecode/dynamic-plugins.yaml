@@ -28,9 +28,9 @@
 # To add your own plugins: mount your own dynamic-plugins.yaml over this path
 # (read-only) — the same pattern the 2.x compose used, or append to
 # `plugins:` if you're maintaining a derived image. Browse the plugins
-# pre-packaged in this image with: ls dynamic-plugins/dist/ (each directory
-# name is the exact "package:" path to use here, e.g.
-# ./dynamic-plugins/dist/backstage-community-plugin-tech-radar).
+# in veecode/dynamic-plugins.veecode.yaml, which lists each plugin as an oci:// reference.
+# Copy the `package:` value from there to use the same plugin build here, for
+# example oci://quay.io/veecode/<plugin>@sha256:<digest>.
 #
 # Note on "includes: [dynamic-plugins.default.yaml]" (the upstream-documented
 # convention): that name is a placeholder the installer replaces when

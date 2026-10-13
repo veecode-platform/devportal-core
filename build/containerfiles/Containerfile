@@ -429,7 +429,7 @@ ENV SEGMENT_TEST_MODE=true
 # removed on 2026-08-10 — dynamic-plugins.default.yaml is a live reserved name
 # in the upstream installer contract (the includes: placeholder replaced via
 # CATALOG_INDEX_IMAGE); baking a file at that path shadows upstream behavior.
-# Browse pre-packaged plugins with: ls dynamic-plugins/dist/
+# Browse the plugins the image installs in veecode/dynamic-plugins.veecode.yaml.
 
 # M2 block 5 (D1) — REMOVED at M4.6, 3.0.0-beta.1. It existed for exactly one
 # reason: to retype upstream's ENTRYPOINT array so a fourth --config pair could
