@@ -41,7 +41,7 @@ artifacts tagged `bs_<backstage>__<version>`, and the catalog index uses the mov
    rather than skip a number.
 2. **See where the last release stands.** Run `scripts/release-status.sh <current-image> <current-chart>`. Fix or
    finish any drift it shows first, because this release inherits it.
-3. **Check the Backstage line.** `backstage.json` on `devportal-core` `main` must match the running line (1.52.0
+3. **Check the Backstage line.** `backstage.json` on `devportal-core` `main` must match the running line (1.54.9
    today). Knex migrations only move forward, so an image from an older line cannot boot on a database a newer one
    migrated.
 4. **Check the face pins.** Run `scripts/check-face-pins.sh main` (set `FACE_FILE` to check an edited face before it
@@ -224,9 +224,10 @@ scratch directories on the build machine.
 - **A tag whose `appVersion` lags looks fine until `helm list` reports the wrong version.** `release-status.sh` flags
   it.
 - **Face pins die when quay garbage-collects.** Step 1 anchors them, and the pre-flight checks them.
-- **A global yarn resolution breaks the hermetic build.** It rewrites the lockfile key, and the wrappers'
-  `export-dynamic` runs its own `yarn install` with the old range and no network. Move a transitive dependency inside
-  its range with `yarn up -R`; use a resolution only to leave the range, and only at the root.
+- **A global yarn resolution can break the hermetic build on a line that has the dynamic-plugin wrappers.** It rewrites
+  the lockfile key, and the wrappers' `export-dynamic` runs its own `yarn install` with the old range and no network.
+  Move a transitive dependency inside its range with `yarn up -R`; use a resolution only to leave the range, and only at
+  the root. The 1.54 line has no wrapper workspace, so a root resolution there reaches only the root lockfile install.
 - **The vulnerability database moves.** A released image can turn red overnight with no change; the nightly
   Qualification on `:edge` shows it first.
 - **GitHub API 5xx on the release step.** Wait a few minutes and rerun the workflow once. Never create the release by

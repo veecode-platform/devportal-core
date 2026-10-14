@@ -49,7 +49,7 @@ jobs:
       - name: Install pg, yaml and @backstage/config-loader at their yarn.lock versions
         run: |
           set -euo pipefail
-          modules=(pg@8.22.0 yaml@2.9.0 @backstage/config-loader@1.10.12)
+          modules=(pg@8.22.0 yaml@2.9.0 @backstage/config-loader@1.11.2)
           for module in "${modules[@]}"; do
             if ! grep -qxF "  resolution: \"${module%@*}@npm:${module##*@}\"" yarn.lock; then
               echo "::error::yarn.lock no longer resolves ${module}; update the versions in this workflow"

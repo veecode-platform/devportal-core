@@ -1,7 +1,7 @@
 # /opt/app-root/src/dynamic-plugins.yaml — baked default, additive (OD1 phase A)
 #
 # Fixed file name: the npm installer
-# (@red-hat-developer-hub/cli-module-install-dynamic-plugins@0.4.0) reads this
+# (@red-hat-developer-hub/cli-module-install-dynamic-plugins@0.5.0) reads this
 # same fixed dynamic-plugins.yaml at CWD via the generated
 # install-dynamic-plugins.sh wrapper. The 2.x image always shipped an
 # equivalent baked file; the operator never had to create it from scratch
@@ -28,9 +28,9 @@
 # To add your own plugins: mount your own dynamic-plugins.yaml over this path
 # (read-only) — the same pattern the 2.x compose used, or append to
 # `plugins:` if you're maintaining a derived image. Browse the plugins
-# pre-packaged in this image with: ls dynamic-plugins/dist/ (each directory
-# name is the exact "package:" path to use here, e.g.
-# ./dynamic-plugins/dist/backstage-community-plugin-tech-radar).
+# in veecode/dynamic-plugins.veecode.yaml, which lists each plugin as an oci:// reference.
+# Copy the `package:` value from there to use the same plugin build here, for
+# example oci://quay.io/veecode/<plugin>@sha256:<digest>.
 #
 # Note on "includes: [dynamic-plugins.default.yaml]" (the upstream-documented
 # convention): that name is a placeholder the installer replaces when

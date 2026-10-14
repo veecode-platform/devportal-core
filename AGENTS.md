@@ -15,8 +15,8 @@ Mission context and platform vocabulary live in
 - `veecode/` holds the product face (`dynamic-plugins.veecode.yaml`), the
   baked plugin defaults and the install pre-steps. The image build fails if the
   face does not have exactly 20 entries or a local entry has no built directory.
-- `dynamic-plugins/` is the wrapper workspace for plugins the face installs from
-  local builds.
+- `dynamic-plugins/` is not on the 1.54 line: RHDH `3ac14d77` removed the wrapper
+  workspace and its local plugin wrappers.
 - `backstage.json` is the host Backstage version. `devportal-plugins`
   workspaces track it and may not lead it.
 
@@ -57,7 +57,7 @@ rejects a mismatch.
 ## Upstream sync
 
 `upstream-sync.yaml` merges upstream `main` into `main` every Monday and opens
-an issue when the merge conflicts. It is disabled until the Backstage 1.54 work
-starts, because upstream's bump from 1.52 conflicts every week; re-enable it
-with `gh workflow enable upstream-sync.yaml` when that work begins. Resolve the conflict by following
-`docs/upstream-drift.md`; never force-push `main`.
+an issue when the merge conflicts. It stays disabled on the Backstage 1.54 line:
+RHDH `main` is new-frontend-only after `3ac14d77`, so the sync stops there, and
+the next upstream move is the new frontend system, planned for v4. Resolve a
+conflict by following `docs/upstream-drift.md`; never force-push `main`.

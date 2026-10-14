@@ -12,9 +12,6 @@
     "build": "turbo run build",
     "build:dockerfile": "bash ./scripts/update-Dockerfile.sh",
     "tsc": "turbo run tsc",
-    "export-dynamic": "echo \"Command moved to dynamic-plugins/package.json\"",
-    "export-dynamic:clean": "echo \"Command moved to dynamic-plugins/package.json\"",
-    "copy-dynamic-plugins": "echo \"Command moved to dynamic-plugins/package.json\"",
     "clean": "turbo run clean",
     "test": "turbo run test",
     "lint:check": "turbo run lint:check",
@@ -30,6 +27,7 @@
     "versions:metadata": "node ./scripts/update-metadata.mjs",
     "versions:bump": "node ./scripts/update-backstage.mjs",
     "rulesync:generate": "rulesync generate",
+    "rulesync:check": "rulesync doctor --strict && rulesync generate --check",
     "rulesync:import:cursor": "rulesync import --targets cursor",
     "rulesync:import:claude": "rulesync import --targets claudecode",
     "rulesync:import:opencode": "rulesync import --targets opencode"
@@ -41,9 +39,9 @@
     ]
   },
   "devDependencies": {
-    "@backstage/cli": "0.36.3",
-    "@backstage/cli-defaults": "0.1.3",
-    "@backstage/frontend-test-utils": "0.6.1",
+    "@backstage/cli": "0.36.5",
+    "@backstage/cli-defaults": "0.1.5",
+    "@backstage/frontend-test-utils": "0.6.3",
     "@ianvs/prettier-plugin-sort-imports": "4.7.1",
     "@jest/environment-jsdom-abstract": "30.4.1",
     "@manypkg/cli": "0.25.1",
@@ -53,15 +51,9 @@
     "jest": "30.4.2",
     "jsdom": "27.4.0",
     "lint-staged": "15.5.2",
-    "node-gyp": "10.3.1",
-    "rulesync": "7.30.0",
+    "rulesync": "16.34.2",
     "sherif": "1.13.0",
-    "turbo": "2.10.4"
-  },
-  "dependenciesMeta": {
-    "keytar": {
-      "built": false
-    }
+    "turbo": "2.10.12"
   },
   "resolutions": {
     "@grpc/grpc-js": "1.14.5",
@@ -79,7 +71,8 @@
     "js-yaml@npm:^4.1.0": "4.3.2",
     "js-yaml@npm:^4.1.1": "4.3.2",
     "js-yaml@npm:^4.2.0": "4.3.2",
-    "multer": "2.3.0",
+    "proxy-addr@npm:^2.0.7": "2.0.8",
+    "proxy-addr@npm:~2.0.7": "2.0.8",
     "refractor@npm:3.6.0/prismjs": "^1.30.0",
     "tar@npm:^7.5.4": "7.5.22",
     "tar@npm:^7.5.6": "7.5.22",
@@ -89,8 +82,7 @@
     "undici@npm:^7.2.3": "7.29.1",
     "undici@npm:^7.21.0": "7.29.1",
     "undici@npm:^7.24.0": "7.29.1",
-    "undici@npm:^7.24.5": "7.29.1",
-    "vm2": "3.12.2"
+    "undici@npm:^7.24.5": "7.29.1"
   },
   "jest": {
     "testTimeout": 20000

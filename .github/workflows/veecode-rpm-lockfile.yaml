@@ -1,0 +1,120 @@
+name: VeeCode RPM Lockfile
+
+# Regenerates rpms.lock.yaml on GitHub's Ubuntu runner (rpm-lockfile-prototype needs the DNF
+# Python bindings, which are not packaged for every developer machine) and returns it as an
+# artifact. It never commits, pushes or opens a PR: a person downloads the artifact and commits it.
+# Use it from a branch: a push that touches the inputs below runs the pushed commit's copy of
+# this file, so it works before the file reaches main. A push that changes rpms.lock.yaml runs it
+# too, which shows whether the committed lock is reproducible.
+# Unlike the disabled upstream update-rpm-lockfile.yaml, it needs no bot token.
+
+on:
+  workflow_dispatch:
+  push:
+    branches-ignore:
+      - main
+    paths:
+      - rpms.in.yaml
+      - rpms.lock.yaml
+      - build/containerfiles/Containerfile
+      - .github/workflows/veecode-rpm-lockfile.yaml
+
+permissions:
+  contents: read
+
+env:
+  CONTAINERFILE_PATH: build/containerfiles/Containerfile
+  RPM_LOCKFILE_PROTOTYPE_COMMIT: bd52a866369b2c6cc701e8d43ca8665fed51e0c7 # tag v0.30.1
+
+jobs:
+  regenerate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+
+      - name: Keep the committed lockfile for comparison
+        run: cp rpms.lock.yaml "${RUNNER_TEMP}/rpms.lock.committed.yaml"
+
+      - name: Install rpm-lockfile-prototype
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3 python3-pip python3-venv podman skopeo rpm dnf python3-dnf
+
+          # The tool imports the distribution's DNF bindings, so the venv sees the system packages.
+          python3 -m venv --system-site-packages "${RUNNER_TEMP}/venv"
+          "${RUNNER_TEMP}/venv/bin/pip" install \
+            "https://github.com/konflux-ci/rpm-lockfile-prototype/archive/${RPM_LOCKFILE_PROTOTYPE_COMMIT}.zip"
+
+      - name: Regenerate rpms.lock.yaml
+        run: |
+          grep -n '^FROM' "${CONTAINERFILE_PATH}"
+          "${RUNNER_TEMP}/venv/bin/rpm-lockfile-prototype" -f "${CONTAINERFILE_PATH}" rpms.in.yaml
+
+      - name: Check the lockfile covers every arch in rpms.in.yaml
+        run: |
+          "${RUNNER_TEMP}/venv/bin/python" - <<'PY'
+          import sys
+          import yaml
+
+          wanted = yaml.safe_load(open("rpms.in.yaml"))["arches"]
+          lock = yaml.safe_load(open("rpms.lock.yaml"))
+          counts = {a["arch"]: len(a.get("packages") or []) for a in lock["arches"]}
+          print(counts)
+          missing = [a for a in wanted if not counts.get(a)]
+          if missing:
+              sys.exit(f"rpms.lock.yaml has no packages for: {', '.join(missing)}")
+          PY
+
+      - name: Summarize against the committed lockfile
+        run: |
+          "${RUNNER_TEMP}/venv/bin/python" - "${RUNNER_TEMP}/rpms.lock.committed.yaml" rpms.lock.yaml >> "${GITHUB_STEP_SUMMARY}" <<'PY'
+          import sys
+          import yaml
+
+          LIST_LIMIT = 40
+
+          def packages(path):
+              out = {}
+              for entry in yaml.safe_load(open(path))["arches"]:
+                  by_name = {}
+                  for pkg in entry.get("packages") or []:
+                      nvra = pkg["url"].rsplit("/", 1)[-1].removesuffix(".rpm")
+                      name = nvra.rsplit(".", 1)[0].rsplit("-", 2)[0]
+                      by_name.setdefault(name, set()).add(nvra)
+                  out[entry["arch"]] = by_name
+              return out
+
+          old, new = packages(sys.argv[1]), packages(sys.argv[2])
+          identical = open(sys.argv[1], "rb").read() == open(sys.argv[2], "rb").read()
+
+          print("## rpms.lock.yaml regenerated")
+          print()
+          print("Identical to the committed lockfile." if identical else "Differs from the committed lockfile.")
+          print()
+          print("| arch | committed | regenerated | added | removed | changed |")
+          print("| --- | ---: | ---: | ---: | ---: | ---: |")
+          details = []
+          for arch in sorted(set(old) | set(new)):
+              o, n = old.get(arch, {}), new.get(arch, {})
+              added = sorted(set(n) - set(o))
+              removed = sorted(set(o) - set(n))
+              changed = sorted(k for k in set(o) & set(n) if o[k] != n[k])
+              print(f"| {arch} | {len(o)} | {len(n)} | {len(added)} | {len(removed)} | {len(changed)} |")
+              for label, names in (("added", added), ("removed", removed), ("changed", changed)):
+                  if names:
+                      shown = ", ".join(names[:LIST_LIMIT]) + (f", and {len(names) - LIST_LIMIT} more" if len(names) > LIST_LIMIT else "")
+                      details.append(f"<details><summary>{arch} {label} ({len(names)})</summary>\n\n{shown}\n\n</details>")
+          print()
+          print("\n\n".join(details))
+          PY
+
+      - name: Upload rpms.lock.yaml
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: rpms.lock.yaml
+          path: rpms.lock.yaml
+          if-no-files-found: error
