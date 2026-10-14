@@ -5,12 +5,12 @@
 https://github.com/veecode-platform/devportal-core/blob/main/backstage.json
 -->
 
-Based on [Backstage 1.52.0](https://backstage.io/docs/releases/v1.52.0)
+Based on [Backstage 1.54.9](https://backstage.io/docs/releases/v1.54.0)
 
 To bootstrap Backstage app that is compatible with RHDH next, you can use:
 
 ```bash
-npx @backstage/create-app@0.8.4
+npx @backstage/create-app@0.9.1
 ```
 
 ### Frontend packages
@@ -18,12 +18,12 @@ npx @backstage/create-app@0.8.4
 
 | **Package**                    | **Version** |
 | ------------------------------ | ----------- |
-| `@backstage/catalog-model` | `1.9.0` |
+| `@backstage/catalog-model` | `1.10.0` |
 | `@backstage/config` | `1.3.8` |
-| `@backstage/core-app-api` | `1.20.2` |
-| `@backstage/core-components` | `0.18.11` |
-| `@backstage/core-plugin-api` | `1.12.7` |
-| `@backstage/integration-react` | `1.2.19` |
+| `@backstage/core-app-api` | `1.20.4` |
+| `@backstage/core-components` | `0.18.13` |
+| `@backstage/core-plugin-api` | `1.12.9` |
+| `@backstage/integration-react` | `1.2.21` |
 
 
 
@@ -37,14 +37,14 @@ in the `main` branch of the [repository](https://github.com/veecode-platform/dev
 
 | **Package**                    | **Version** |
 | ------------------------------ | ----------- |
-| `@backstage/backend-app-api` | `1.7.1` |
-| `@backstage/backend-defaults` | `0.17.3` |
-| `@backstage/backend-dynamic-feature-service` | `0.8.3` |
-| `@backstage/backend-plugin-api` | `1.9.2` |
-| `@backstage/catalog-model` | `1.9.0` |
-| `@backstage/cli-node` | `0.3.3` |
+| `@backstage/backend-app-api` | `1.7.3` |
+| `@backstage/backend-defaults` | `0.17.8` |
+| `@backstage/backend-dynamic-feature-service` | `0.8.6` |
+| `@backstage/backend-plugin-api` | `1.10.0` |
+| `@backstage/catalog-model` | `1.10.0` |
+| `@backstage/cli-node` | `0.3.4` |
 | `@backstage/config` | `1.3.8` |
-| `@backstage/config-loader` | `1.10.12` |
+| `@backstage/config-loader` | `1.11.2` |
 
 
 
