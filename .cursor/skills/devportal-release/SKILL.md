@@ -227,7 +227,8 @@ scratch directories on the build machine.
 - **A global yarn resolution can break the hermetic build on a line that has the dynamic-plugin wrappers.** It rewrites
   the lockfile key, and the wrappers' `export-dynamic` runs its own `yarn install` with the old range and no network.
   Move a transitive dependency inside its range with `yarn up -R`; use a resolution only to leave the range, and only at
-  the root. The 1.54 line has no wrapper workspace, so a root resolution there reaches only the root lockfile install.
+  the root, unless `docs/upstream-drift.md` records a root pin, as for `proxy-addr` on the 1.54 line. The 1.54 line
+  has no wrapper workspace, so a root resolution there reaches only the root lockfile install.
 - **The vulnerability database moves.** A released image can turn red overnight with no change; the nightly
   Qualification on `:edge` shows it first.
 - **GitHub API 5xx on the release step.** Wait a few minutes and rerun the workflow once. Never create the release by
