@@ -47,7 +47,7 @@ jobs:
           # The tool imports the distribution's DNF bindings, so the venv sees the system packages.
           python3 -m venv --system-site-packages "${RUNNER_TEMP}/venv"
           "${RUNNER_TEMP}/venv/bin/pip" install \
-            "https://github.com/konflux-ci/rpm-lockfile-prototype/archive/refs/tags/${RPM_LOCKFILE_PROTOTYPE_VERSION}.zip"
+            "https://github.com/konflux-ci/rpm-lockfile-prototype/archive/${RPM_LOCKFILE_PROTOTYPE_COMMIT}.zip"
 
       - name: Regenerate rpms.lock.yaml
         run: |
