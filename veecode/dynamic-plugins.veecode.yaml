@@ -99,14 +99,14 @@ plugins:
 # lets plain-HTTP origins record visits), the same channel as veecode-theme —
 # devportal-plugins is source-only, its npm publish path is retired.
 # The bundle carries the VisitListener export and the config.d.ts and
-# useVisited(orderBy) fixes, built for this 1.52 shell. If the route
+# useVisited(orderBy) fixes, exported for this shell. If the route
 # 404s or mounts blank, check the browser console for
 # scalprum/shared-scope errors FIRST.
 # Pinned by DIGEST (the installer's documented integrity mechanism,
 # docs/dynamic-plugins/installing-plugins.md:142) — bs_* tags are
 # mutable in the overlays fleet (retag promotion). Digest below is
-# tag bs_1.52.0__1.0.3 at publish time; bumping = new digest here.
-- package: oci://quay.io/veecode/veecode-platform-plugin-veecode-homepage@sha256:897d9ae74de429f5df809c1b315281e4926dac77f49848c3e51843203a28709e!veecode-platform-plugin-veecode-homepage # was :bs_1.52.0__1.0.3
+# tag bs_1.54.9__1.0.3 at publish time; bumping = new digest here.
+- package: oci://quay.io/veecode/veecode-platform-plugin-veecode-homepage@sha256:fe312abc6c239d770ed77d20eb63b9016e629f3a7c68d27261ec8beec4732c23!veecode-platform-plugin-veecode-homepage # was :bs_1.54.9__1.0.3
   disabled: false
   pluginConfig:
     dynamicPlugins:
@@ -135,7 +135,7 @@ plugins:
               importName: VisitListener
 
 # ── Header (rich default; owns default.admin sidebar group) ───────────
-- package: oci://quay.io/veecode/red-hat-developer-hub-backstage-plugin-global-header@sha256:2a622b6a8c30584eb1023869d7387f1ec09309f62ef3621b94a20fb5d81de1a1!red-hat-developer-hub-backstage-plugin-global-header # was :bs_1.52.0__1.21.6
+- package: oci://quay.io/veecode/red-hat-developer-hub-backstage-plugin-global-header@sha256:2ef7191074461f10227608c822e883604a6674588428e22df8ae16c97b31f46a!red-hat-developer-hub-backstage-plugin-global-header # was :bs_1.54.9__3.1.0
   disabled: false
   pluginConfig:
     dynamicPlugins:
@@ -320,7 +320,7 @@ plugins:
 # Delivered from the export-overlays OCI pipeline (workspaces/about), like
 # veecode-homepage; npm 1.1.0 was its last npm release. Pinned by digest:
 # bs_* tags are mutable in the overlays fleet.
-- package: oci://quay.io/veecode/veecode-platform-backstage-plugin-about@sha256:5746126ea0129d0125d0fada629b543c981d121bbfd27263dfec0fcae9568ead!veecode-platform-backstage-plugin-about # was :bs_1.52.0__1.2.1
+- package: oci://quay.io/veecode/veecode-platform-backstage-plugin-about@sha256:79978700376818676b95189d4ada533e0cdded6b27ddcb0da0921d1fc36adb8e!veecode-platform-backstage-plugin-about # was :bs_1.54.9__1.2.1
   disabled: false
   pluginConfig:
     dynamicPlugins:
@@ -343,7 +343,7 @@ plugins:
               icon: aboutIcon
 
 # ── About backend (no pluginConfig) ───────────────────────────────────
-- package: oci://quay.io/veecode/veecode-platform-backstage-plugin-about-backend@sha256:99ca46df8ebda0e36793c18533c3fc4f00dd099467931bc3bf7685cc35958ac7!veecode-platform-backstage-plugin-about-backend # was :bs_1.52.0__1.2.0
+- package: oci://quay.io/veecode/veecode-platform-backstage-plugin-about-backend@sha256:3b3a20e3d947a0026eb680594782040cd263c584c730c6b4bda524fdd0c9bea2!veecode-platform-backstage-plugin-about-backend # was :bs_1.54.9__1.2.0
   disabled: false
 
 # ── Marketplace / Extensions (M3 loop) ────────────────────────────────
@@ -351,10 +351,10 @@ plugins:
 - package: oci://quay.io/veecode/red-hat-developer-hub-backstage-plugin-catalog-backend-module-extensions@sha256:9fad03e713fe046ab2b381d243bbc231497dcb27c260aa127fa6fd163254987d!red-hat-developer-hub-backstage-plugin-catalog-backend-module-extensions # was :bs_1.52.0__0.18.0
   disabled: false
 # VeeCode marketplace backend (byte-identical across tags; owns /api/extensions/*).
-- package: oci://quay.io/veecode/devportal-marketplace-backend@sha256:53c0c06ab767241553ba5e2058185ca948589ffb96237e155b6df5b92ded4b70!devportal-marketplace-backend # was :bs_1.52.0__0.3.0
+- package: oci://quay.io/veecode/devportal-marketplace-backend@sha256:29d571704b31a7c444efc3af5d1e2c2387e474cb5bba782ff02870451f402a79!devportal-marketplace-backend # was :bs_1.54.9__0.3.0
   disabled: false
 # Pending-changes (header button for the batch install/removal UX).
-- package: oci://quay.io/veecode/devportal-pending-changes-dynamic@sha256:18d75d59e287e9e3ab4794ce851e1aa947c8674615def00273550574e365b342!devportal-pending-changes-dynamic # was :bs_1.52.0__0.3.0
+- package: oci://quay.io/veecode/devportal-pending-changes-dynamic@sha256:6891aa72fa564d67d7bda84e7ca2d35b84b031938ceb9447090dab4edeb48e99!devportal-pending-changes-dynamic # was :bs_1.54.9__0.3.0
   disabled: false
   pluginConfig:
     dynamicPlugins:
@@ -368,8 +368,8 @@ plugins:
                 props:
                   pollingIntervalMs: 30000
 # VeeCode marketplace frontend at /marketplace: the 0.3.1 per-plugin artifact,
-# built for Backstage 1.52.0 (tag bs_1.52.0__0.3.1).
-- package: oci://quay.io/veecode/devportal-marketplace-frontend-dynamic@sha256:2d3ffc77eac7436c375b7fe8068a5377eadfb6f0b79d520ed0672342ae467ffc!devportal-marketplace-frontend-dynamic # was :bs_1.52.0__0.3.1
+# exported on the Backstage 1.54.9 line (tag bs_1.54.9__0.3.1).
+- package: oci://quay.io/veecode/devportal-marketplace-frontend-dynamic@sha256:37f1b350eedde5caf4cdb6a8b5591424daacf876ee4fb8131fc584634689e663!devportal-marketplace-frontend-dynamic # was :bs_1.54.9__0.3.1
   disabled: false
   pluginConfig:
     dynamicPlugins:
@@ -393,7 +393,7 @@ plugins:
 # ══ 0.1.1 — VeeCode 2.x default face, delivered via chart (M4.7) ═══════
 # ── Docs / TechDocs (GAP-001; RHDH default frontend config — registers
 #    the /docs route + the sidebar "Docs" item + the entity docs tab) ───
-- package: oci://quay.io/veecode/backstage-plugin-techdocs@sha256:d8222a85e6a4b61e230e2ff8944ccd794876c1f30eb9b49faeade3c6c308dcc9!backstage-plugin-techdocs # was :bs_1.52.0__1.17.7
+- package: oci://quay.io/veecode/backstage-plugin-techdocs@sha256:6cd5aa0c2727240e3f483c821b9cd5a9cb91f2884935806ae7f126714f04d87c!backstage-plugin-techdocs # was :bs_1.54.9__1.18.0
   disabled: false
   pluginConfig:
     dynamicPlugins:
@@ -436,13 +436,13 @@ plugins:
               config:
                 layout:
                   gridColumn: "1 / -1"
-- package: oci://quay.io/veecode/backstage-plugin-techdocs-backend@sha256:e43b9fb4aabb758d7fe47f837c2b2e779fe189b184eaad58e827c48de8821d71!backstage-plugin-techdocs-backend # was :bs_1.52.0__2.2.1
+- package: oci://quay.io/veecode/backstage-plugin-techdocs-backend@sha256:17238af383db90e1a597f1204f5df2dc2b3bb05e72af4ae5b7c5a88de85e12ff!backstage-plugin-techdocs-backend # was :bs_1.54.9__2.2.5
   disabled: false
-- package: oci://quay.io/veecode/backstage-plugin-techdocs-module-addons-contrib@sha256:9feeac06c77eb32f9b5a7f2fa74e2eaa9d538bdb0dd62811ec5f9d010c437035!backstage-plugin-techdocs-module-addons-contrib # was :bs_1.52.0__1.1.37
+- package: oci://quay.io/veecode/backstage-plugin-techdocs-module-addons-contrib@sha256:9a0a16aa6248e6157bb9c94bbb74a85a430b18405ea6ab9a9ca509d533756886!backstage-plugin-techdocs-module-addons-contrib # was :bs_1.54.9__1.1.39
   disabled: false
 # ── Notifications + Signals (GAP-003; frontend config registers the
 #    /notifications route + the sidebar "Notifications" item) ───────────
-- package: oci://quay.io/veecode/backstage-plugin-notifications@sha256:bb3c3f0739f81ac5aa1e40f63bbc7d1aa99bf8c80cd5f6c232f74ed88d2315a2!backstage-plugin-notifications # was :bs_1.52.0__0.5.18
+- package: oci://quay.io/veecode/backstage-plugin-notifications@sha256:1919932ddf6ac59623a7f96bcc42f9e128bac0005494739dfde363784522fa03!backstage-plugin-notifications # was :bs_1.54.9__0.5.20
   disabled: false
   pluginConfig:
     dynamicPlugins:
@@ -457,11 +457,11 @@ plugins:
           menuItems:
             notifications:
               priority: 80
-- package: oci://quay.io/veecode/backstage-plugin-signals@sha256:8764b50b78b643aa8d2bbbd6a67427c8924e9226c40f0b5c371aed4d09f16610!backstage-plugin-signals # was :bs_1.52.0__0.0.32
+- package: oci://quay.io/veecode/backstage-plugin-signals@sha256:5386b0ef4af65fb9ea67189ce3136811eccc0f2e6251cb369b38572b9ffa0248!backstage-plugin-signals # was :bs_1.54.9__0.0.34
   disabled: false
-- package: oci://quay.io/veecode/backstage-plugin-notifications-backend@sha256:56583b006dab7d7ff78feac149f7d649e795a4b19cb05300de28a652c6d45c35!backstage-plugin-notifications-backend # was :bs_1.52.0__0.6.6
+- package: oci://quay.io/veecode/backstage-plugin-notifications-backend@sha256:d48f3ff2f2d45432fa4046bb1714eb0ac2e908b6a1bfe2297b90524ce45b1fa7!backstage-plugin-notifications-backend # was :bs_1.54.9__0.6.8
   disabled: false
-- package: oci://quay.io/veecode/backstage-plugin-signals-backend@sha256:ea4c2a6c4a627402a7c12fc380d1b2a3084997389ffa39d4cb886181e2a10fff!backstage-plugin-signals-backend # was :bs_1.52.0__0.3.16
+- package: oci://quay.io/veecode/backstage-plugin-signals-backend@sha256:fba0c367d0fa243ebf5d97e7db0ee75500d7995d8e57a21c915b5609fedea82a!backstage-plugin-signals-backend # was :bs_1.54.9__0.3.18
   disabled: false
 # ── Tech Radar (GAP-005; pluginConfig copied from 2.x recommended.yaml:44-66) ─
 - package: oci://quay.io/veecode/backstage-community-plugin-tech-radar@sha256:2a5e149c22bdc02f6cf0d1ba6db0113105b284bf05b3806678cca601387f3b63!backstage-community-plugin-tech-radar # was :bs_1.52.0__1.17.0
