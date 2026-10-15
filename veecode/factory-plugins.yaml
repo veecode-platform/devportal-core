@@ -1,0 +1,41 @@
+factoryPlugins:
+  - repository: quay.io/veecode/veecode-platform-plugin-veecode-homepage
+    path: veecode-platform-plugin-veecode-homepage
+  - repository: quay.io/veecode/red-hat-developer-hub-backstage-plugin-global-header
+    path: red-hat-developer-hub-backstage-plugin-global-header
+  - repository: quay.io/veecode/backstage-community-plugin-rbac
+    path: backstage-community-plugin-rbac
+  - repository: quay.io/veecode/veecode-platform-backstage-plugin-about
+    path: veecode-platform-backstage-plugin-about
+  - repository: quay.io/veecode/veecode-platform-backstage-plugin-about-backend
+    path: veecode-platform-backstage-plugin-about-backend
+  - repository: quay.io/veecode/red-hat-developer-hub-backstage-plugin-catalog-backend-module-extensions
+    path: red-hat-developer-hub-backstage-plugin-catalog-backend-module-extensions
+    protected: true
+  - repository: quay.io/veecode/devportal-marketplace-backend
+    path: devportal-marketplace-backend
+    protected: true
+  - repository: quay.io/veecode/devportal-pending-changes-dynamic
+    path: devportal-pending-changes-dynamic
+    protected: true
+  - repository: quay.io/veecode/devportal-marketplace-frontend-dynamic
+    path: devportal-marketplace-frontend-dynamic
+    protected: true
+  - repository: quay.io/veecode/backstage-plugin-techdocs
+    path: backstage-plugin-techdocs
+  - repository: quay.io/veecode/backstage-plugin-techdocs-backend
+    path: backstage-plugin-techdocs-backend
+  - repository: quay.io/veecode/backstage-plugin-techdocs-module-addons-contrib
+    path: backstage-plugin-techdocs-module-addons-contrib
+  - repository: quay.io/veecode/backstage-plugin-notifications
+    path: backstage-plugin-notifications
+  - repository: quay.io/veecode/backstage-plugin-signals
+    path: backstage-plugin-signals
+  - repository: quay.io/veecode/backstage-plugin-notifications-backend
+    path: backstage-plugin-notifications-backend
+  - repository: quay.io/veecode/backstage-plugin-signals-backend
+    path: backstage-plugin-signals-backend
+  - repository: quay.io/veecode/backstage-community-plugin-tech-radar
+    path: backstage-community-plugin-tech-radar
+  - repository: quay.io/veecode/backstage-community-plugin-tech-radar-backend
+    path: backstage-community-plugin-tech-radar-backend

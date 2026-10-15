@@ -388,38 +388,41 @@ RUN ln -sfn /devportal-data/dynamic-plugins.yaml /opt/app-root/src/dynamic-plugi
 # plugins, no theme and no marketplace. It is not meant to run alone.
 # See devportal-planning: docs/adr/003 (amendment point 9), docs/milestones/M4.6.md.
 
-# OD1 phase A: baked VeeCode product-face plugin list, referenced via the
-# chart's global.dynamic.includes so a customer's global.dynamic.plugins
-# override can no longer silently erase the face (see veecode/dynamic-plugins.veecode.yaml).
-COPY --chown=1001:0 veecode/dynamic-plugins.veecode.yaml /opt/app-root/src/dynamic-plugins.veecode.yaml
+# Factory plugin list (names only). The pre-step reads it to tell which Marketplace
+# rows name a plugin the catalog index enables; the index owns their versions and config.
+COPY --chown=1001:0 veecode/factory-plugins.yaml /opt/app-root/src/factory-plugins.yaml
 
-# OD1 phase A, main-only: release-1.10's boot-time fail-closed/backstop guard
-# for this file lived inside the vendorized install-dynamic-plugins.py, which
-# does not exist on this branch (installer consumed from npm — see AGENTS.md).
-# There is no equivalent guard at boot on main (formerly veecode/main), so this asserts the
-# face's shape at BUILD time instead: the image simply cannot be built with a
-# missing, empty, or short-count face file. (The Helm path is separately
-# guarded by the chart's values-schema gate, chart 0.1.10+.) A plain grep
-# count is used rather than a YAML parse because neither PyYAML nor a JS YAML
-# lib is guaranteed installed at this point in the image.
-# Every local `./dynamic-plugins/dist/...` ref must also resolve to a real
-# directory: the npm installer WARN+SKIPs a missing local package (exit 0),
-# so a wrong dist name would ship a silently partial face — exactly the
-# 3.0.0-beta.3 regression (5 backend refs missing their `-dynamic` suffix).
-RUN FACE_FILE=/opt/app-root/src/dynamic-plugins.veecode.yaml; \
-    FACE_ENTRY_COUNT=$(grep -c '^- package:' "$FACE_FILE" || true); \
-    if [ ! -s "$FACE_FILE" ] || [ "$FACE_ENTRY_COUNT" -ne 20 ]; then \
-      echo "FATAL: $FACE_FILE missing, empty, or does not contain exactly 20 plugin entries (found: ${FACE_ENTRY_COUNT:-0})" >&2; \
+# The factory list and the baked default are checked at build time. The checks use grep
+# because no YAML library is guaranteed at this stage. The list holds names only, with one
+# path per repository and exactly four protected entries; the chart qualification compares
+# its entries with the pinned index. The baked default must not name the retired product
+# face, and that file must not be in the image.
+RUN FACTORY_FILE="${FACTORY_FILE:-/opt/app-root/src/factory-plugins.yaml}"; \
+    BAKED_FILE="${BAKED_FILE:-/opt/app-root/src/dynamic-plugins.yaml.baked}"; \
+    FACE_PATH="${FACE_PATH:-/opt/app-root/src/dynamic-plugins.veecode.yaml}"; \
+    REPO_COUNT=$(grep -c '^ *- repository: ' "$FACTORY_FILE" || true); \
+    PATH_COUNT=$(grep -c '^ *path: ' "$FACTORY_FILE" || true); \
+    PROTECTED_COUNT=$(grep -c '^ *protected: true$' "$FACTORY_FILE" || true); \
+    if [ ! -s "$FACTORY_FILE" ] || [ "${REPO_COUNT:-0}" -eq 0 ] || [ "${PATH_COUNT:-0}" -ne "${REPO_COUNT:-0}" ]; then \
+      echo "FATAL: $FACTORY_FILE missing, empty, or not one path per repository (repository: ${REPO_COUNT:-0}, path: ${PATH_COUNT:-0})" >&2; \
       exit 1; \
     fi; \
-    MISSING=0; \
-    for p in $(grep -o '^- package: \./dynamic-plugins/dist/[^ ]*' "$FACE_FILE" | awk '{print $3}'); do \
-      if [ ! -d "/opt/app-root/src/${p#./}" ]; then \
-        echo "FATAL: face entry $p does not resolve to a directory in the image" >&2; \
-        MISSING=1; \
-      fi; \
-    done; \
-    [ "$MISSING" -eq 0 ]
+    if [ "${PROTECTED_COUNT:-0}" -ne 4 ]; then \
+      echo "FATAL: $FACTORY_FILE must mark exactly 4 entries protected: true (found: ${PROTECTED_COUNT:-0})" >&2; \
+      exit 1; \
+    fi; \
+    if grep -q -E 'package:|oci://|@sha256|pluginConfig|disabled' "$FACTORY_FILE"; then \
+      echo "FATAL: $FACTORY_FILE holds names only: no package, oci://, digest, pluginConfig or disabled" >&2; \
+      exit 1; \
+    fi; \
+    if [ -e "$FACE_PATH" ]; then \
+      echo "FATAL: $FACE_PATH must not exist: the product face is retired" >&2; \
+      exit 1; \
+    fi; \
+    if grep -q 'dynamic-plugins\.veecode\.yaml' "$BAKED_FILE"; then \
+      echo "FATAL: $BAKED_FILE names dynamic-plugins.veecode.yaml" >&2; \
+      exit 1; \
+    fi
 
 # M2 block 3: neutralize Red Hat's Segment telemetry. Upstream sets
 # SEGMENT_TEST_MODE=false earlier in this stage; the last ENV wins.
@@ -429,7 +432,7 @@ ENV SEGMENT_TEST_MODE=true
 # removed on 2026-08-10 — dynamic-plugins.default.yaml is a live reserved name
 # in the upstream installer contract (the includes: placeholder replaced via
 # CATALOG_INDEX_IMAGE); baking a file at that path shadows upstream behavior.
-# Browse the plugins the image installs in veecode/dynamic-plugins.veecode.yaml.
+# The plugins the image installs come from the catalog index; veecode/factory-plugins.yaml names the factory ones.
 
 # M2 block 5 (D1) — REMOVED at M4.6, 3.0.0-beta.1. It existed for exactly one
 # reason: to retype upstream's ENTRYPOINT array so a fourth --config pair could
