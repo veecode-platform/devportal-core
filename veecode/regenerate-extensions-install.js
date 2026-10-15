@@ -76,16 +76,10 @@ const PLUGIN_ID = 'extensions';
 const DEFAULT_PREFIX = 'backstage_plugin_';
 const TABLE = 'marketplace_installations';
 
-// The baked face is included at level 0. Marketplace rows for its plugins are
-// emitted at level 1 with the face reference so the installer keeps the face's
-// package version while applying the row's disabled flag.
-const DEFAULT_FACE_FILE = '/opt/app-root/src/dynamic-plugins.veecode.yaml';
-const PROTECTED_MARKETPLACE_FACE_PLUGINS = [
-  'devportal-marketplace-backend',
-  'devportal-marketplace-frontend-dynamic',
-  'devportal-pending-changes-dynamic',
-  'red-hat-developer-hub-backstage-plugin-catalog-backend-module-extensions',
-];
+// The catalog index enables the factory plugins, so the image carries only their
+// names. A Marketplace row for one of them is dropped, or takes the ordinary path
+// when it disables a plugin the Marketplace may disable.
+const DEFAULT_FACTORY_PLUGINS_FILE = '/opt/app-root/src/factory-plugins.yaml';
 
 // Bounded timeouts so an unreachable/slow DB DEGRADES (empty/unchanged file)
 // instead of hanging the boot. Without connectionTimeoutMillis, pg.connect()
@@ -365,9 +359,9 @@ function rowsToPlugins(rows, effectiveRefs = new Map()) {
 }
 
 // Normalizes a package ref to a collision key comparable across sources that pin
-// versions differently — the face file carries a tag or digest, this script always
-// digest-pins (refWithDigest above), so raw-string comparison would never match a
-// face entry against its regenerated counterpart. Mirrors the installer's
+// versions differently — a Marketplace row may carry a tag or digest, this script
+// always digest-pins (refWithDigest above), so raw-string comparison would never
+// match a row against its regenerated counterpart. Mirrors the installer's
 // parse_plugin_key version-stripping (install-dynamic-plugins.py:503-565 for OCI,
 // :409-460 for npm) closely enough for dedup purposes: OCI compares on the
 // registry/image path, plus the `!<plugin-path>` selector when the ref has one,
@@ -389,7 +383,7 @@ function normalizePluginKey(ref) {
 
 // Best-effort package ref for a DB row before digest resolution. It mirrors
 // rowsToPlugins' precedence (`config_yaml`'s `package:` wins, else
-// `package_name`); callers use samePlugin to compare the ref with face entries.
+// `package_name`); the factory-list match in main() reads its repository and selector.
 function rowPackageRef(row) {
   const raw = row.config_yaml != null ? String(row.config_yaml).trim() : '';
   if (raw) {
@@ -503,14 +497,17 @@ function keepOneRowPerPlugin(rows) {
   });
 }
 
-function loadFaceEntries() {
-  const faceFile = process.env.DEVPORTAL_FACE_FILE || DEFAULT_FACE_FILE;
+// The list names the plugins the catalog index enables. It carries no digests and
+// no configuration: the index owns both.
+function loadFactoryEntries() {
+  const factoryFile =
+    process.env.DEVPORTAL_FACTORY_PLUGINS_FILE || DEFAULT_FACTORY_PLUGINS_FILE;
   let raw;
   try {
-    raw = fs.readFileSync(faceFile, 'utf8');
+    raw = fs.readFileSync(factoryFile, 'utf8');
   } catch (e) {
     warn(
-      `could not read face file ${faceFile} (${e.message}); rows for face plugins are handled as any other row`,
+      `could not read factory plugin list ${factoryFile} (${e.message}); rows for factory plugins are handled as any other row`,
     );
     return null;
   }
@@ -519,13 +516,41 @@ function loadFaceEntries() {
     parsed = YAML.parse(raw);
   } catch (e) {
     warn(
-      `face file ${faceFile} is not valid YAML (${e.message}); rows for face plugins are handled as any other row`,
+      `factory plugin list ${factoryFile} is not valid YAML (${e.message}); rows for factory plugins are handled as any other row`,
     );
     return null;
   }
-  const facePlugins =
-    parsed && Array.isArray(parsed.plugins) ? parsed.plugins : [];
-  return facePlugins.filter(p => p && typeof p.package === 'string');
+  const entries =
+    parsed && Array.isArray(parsed.factoryPlugins) ? parsed.factoryPlugins : null;
+  const valid =
+    entries !== null &&
+    entries.every(
+      entry =>
+        entry &&
+        typeof entry.repository === 'string' &&
+        typeof entry.path === 'string' &&
+        (entry.protected === undefined || typeof entry.protected === 'boolean'),
+    );
+  if (!valid) {
+    warn(
+      `factory plugin list ${factoryFile} has no valid factoryPlugins list; rows for factory plugins are handled as any other row`,
+    );
+    return null;
+  }
+  return entries;
+}
+
+// The entries a Marketplace row names: the same OCI repository, and a selector, when
+// the row has one, equal to the entry's path. This is the comparison samePlugin makes.
+function factoryEntriesFor(entries, packageRef) {
+  const oci = splitOciRef(packageRef);
+  if (!oci) return [];
+  const repository = ociRepository(oci.image);
+  return entries.filter(
+    entry =>
+      entry.repository === repository &&
+      (oci.selector === null || oci.selector === entry.path),
+  );
 }
 
 function samePlugin(a, b) {
@@ -560,27 +585,6 @@ function hasPluginConfig(row) {
   }
 }
 
-function protectedMarketplacePluginName(packageRef) {
-  const candidates = new Set();
-  const addCandidate = value => {
-    if (typeof value !== 'string' || !value) return;
-    const name = value.replace(/\/+$/, '').split('/').pop();
-    if (!name) return;
-    candidates.add(name);
-    candidates.add(name.replace(/-dynamic$/, ''));
-  };
-  const oci = splitOciRef(packageRef);
-  if (oci) {
-    addCandidate(ociRepository(oci.image));
-    addCandidate(oci.selector);
-  } else {
-    addCandidate(packageRef);
-  }
-  return PROTECTED_MARKETPLACE_FACE_PLUGINS.find(name =>
-    candidates.has(name) || candidates.has(name.replace(/-dynamic$/, '')),
-  );
-}
-
 function writeAtomic(filePath, contents) {
   const tmp = path.join(
     path.dirname(filePath),
@@ -591,6 +595,11 @@ function writeAtomic(filePath, contents) {
 }
 
 async function main() {
+  if (process.env.DEVPORTAL_FACE_FILE) {
+    warn(
+      `DEVPORTAL_FACE_FILE is set but no longer read; the factory plugin list is ${process.env.DEVPORTAL_FACTORY_PLUGINS_FILE || DEFAULT_FACTORY_PLUGINS_FILE}`,
+    );
+  }
   const targets = parseConfigTargets(process.argv.slice(2));
   const dbPath =
     process.env.DEVPORTAL_DB_PATH || path.join(process.cwd(), 'data');
@@ -673,57 +682,55 @@ async function main() {
     `pluginDivisionMode=${mode} — read "${schema}".${TABLE} in ${where} (${rows.length} row(s))`,
   );
 
-  const faceEntries = loadFaceEntries();
-  const faceBest = new Map();
-  if (faceEntries) {
-    const nonFaceRows = [];
+  // Factory rows: an enabled one is dropped because the index default wins, and a
+  // disabled one of a non-protected plugin takes the ordinary path. Protected rows
+  // are always dropped. Among the rows for one plugin the preferred row decides,
+  // as before, so a stale disabled row cannot override an enabled one.
+  const factoryEntries = loadFactoryEntries();
+  if (factoryEntries) {
+    const factoryBest = new Map();
+    const ordinaryRows = [];
     for (const row of rows) {
-      const matches = faceEntries.filter(entry =>
-        samePlugin(rowPackageRef(row), entry.package),
-      );
-      const matchedSelectors = new Set(
-        matches
-          .map(entry => splitOciRef(entry.package)?.selector)
-          .filter(selector => selector !== null && selector !== undefined),
-      );
-      if (matchedSelectors.size > 1) {
+      const matches = factoryEntriesFor(factoryEntries, rowPackageRef(row));
+      if (new Set(matches.map(entry => entry.path)).size > 1) {
         warn(
-          `marketplace row "${row.package_name}" ambiguously matches face entries ${matches.map(entry => `"${entry.package}"`).join(', ')} with distinct selectors; treating it as a non-face row`,
+          `marketplace row "${row.package_name}" ambiguously matches factory entries ${matches.map(entry => `"${entry.repository}!${entry.path}"`).join(', ')}; treating it as an ordinary row`,
         );
-        nonFaceRows.push(row);
+        ordinaryRows.push(row);
         continue;
       }
-      const face = matches[0];
-      if (!face) {
-        nonFaceRows.push(row);
+      const entry = matches[0];
+      if (!entry) {
+        ordinaryRows.push(row);
         continue;
       }
       if (hasPluginConfig(row)) {
         warn(
-          `ignoring the pluginConfig of "${row.package_name}": the product face owns the configuration of "${face.package}"`,
+          `ignoring the pluginConfig of "${row.package_name}": the catalog index owns the configuration of "${entry.repository}"`,
         );
       }
-      const protectedName = protectedMarketplacePluginName(face.package);
-      if (protectedName && Boolean(row.disabled)) {
-        warn(
-          `ignoring disabled marketplace row "${row.package_name}" for protected marketplace face plugin "${face.package}"; protected plugins: ${PROTECTED_MARKETPLACE_FACE_PLUGINS.join(', ')}`,
-        );
+      if (entry.protected) {
+        if (row.disabled) {
+          warn(
+            `ignoring disabled marketplace row "${row.package_name}" for protected factory plugin "${entry.repository}"`,
+          );
+        } else {
+          log(`index default wins for ${entry.repository}`);
+        }
         continue;
       }
-      const current = faceBest.get(face.package);
-      faceBest.set(
-        face.package,
-        current ? preferredRow(current, row) : row,
-      );
+      const current = factoryBest.get(entry);
+      factoryBest.set(entry, current ? preferredRow(current, row) : row);
     }
-    rows = nonFaceRows;
+    for (const [entry, row] of factoryBest) {
+      if (row.disabled) {
+        ordinaryRows.push(row);
+      } else {
+        log(`index default wins for ${entry.repository}`);
+      }
+    }
+    rows = ordinaryRows;
   }
-  const faceSelections = [...faceBest.entries()].map(([packageRef, row]) => {
-    log(
-      `face default "${packageRef}": marketplace row "${row.package_name}" sets disabled=${Boolean(row.disabled)}`,
-    );
-    return { package: packageRef, disabled: Boolean(row.disabled) };
-  });
 
   rows = keepOneRowPerPlugin(rows);
 
@@ -800,7 +807,7 @@ async function main() {
   const plugins = rowsToPlugins(
     rows.filter(row => !skipped.has(row)),
     effectiveRefs,
-  ).concat(faceSelections);
+  );
 
   try {
     // 2.x's entrypoint guarantees DEVPORTAL_DB_PATH exists before this script

@@ -87,8 +87,9 @@ async function preparePrestep(
     digestColumns = true,
     rows,
     registry = {},
-    faceRefs = [],
-    faceFilePath,
+    factoryEntries = [],
+    factoryFilePath,
+    extraEnv = {},
   },
 ) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'prestep-test-'));
@@ -118,11 +119,11 @@ async function preparePrestep(
       backend: { database: { client: 'pg', connection: PG, prefix } },
     }),
   );
-  const face = faceFilePath || path.join(dir, 'dynamic-plugins.veecode.yaml');
-  if (!faceFilePath) {
+  const factoryFile = factoryFilePath || path.join(dir, 'factory-plugins.yaml');
+  if (!factoryFilePath) {
     fs.writeFileSync(
-      face,
-      YAML.stringify({ plugins: faceRefs.map(ref => ({ package: ref })) }),
+      factoryFile,
+      YAML.stringify({ factoryPlugins: factoryEntries }),
     );
   }
   const calls = path.join(dir, 'skopeo-calls');
@@ -139,9 +140,10 @@ async function preparePrestep(
         ...process.env,
         PATH: `${bin}${path.delimiter}${process.env.PATH}`,
         DEVPORTAL_DB_PATH: data,
-        DEVPORTAL_FACE_FILE: face,
+        DEVPORTAL_FACTORY_PLUGINS_FILE: factoryFile,
         FAKE_SKOPEO_DIGESTS: digests,
         FAKE_SKOPEO_LOG: calls,
+        ...extraEnv,
       },
     });
     const storedDigests = digestColumns
@@ -217,12 +219,11 @@ const dropping = (dropped, kept) =>
 const pinned = (name, sha) =>
   `oci://registry.test/veecode/${name}@${sha}!${name}`;
 const image = name => `docker://registry.test/veecode/${name}:1.0.0`;
-const PROTECTED_MARKETPLACE_PLUGINS = [
-  'devportal-marketplace-backend',
-  'devportal-marketplace-frontend-dynamic',
-  'devportal-pending-changes-dynamic',
-  'red-hat-developer-hub-backstage-plugin-catalog-backend-module-extensions',
-].join(', ');
+const factory = (name, extra = {}) => ({
+  repository: `registry.test/veecode/${name}`,
+  path: name,
+  ...extra,
+});
 
 const SAME_PLUGIN_VECTORS = [
   [
@@ -293,11 +294,11 @@ const SAME_PLUGIN_VECTORS = [
   ],
 ];
 
-async function assertProtectedDisabledFaceRow(t, { prefix, faceRef, rowRef }) {
+async function assertProtectedDisabledFactoryRow(t, { prefix, entry, rowRef }) {
   const run = await runPrestep(t, {
     prefix,
     rows: [installation(rowRef, { disabled: true })],
-    faceRefs: [faceRef],
+    factoryEntries: [entry],
   });
 
   assertWritten(run);
@@ -306,7 +307,7 @@ async function assertProtectedDisabledFaceRow(t, { prefix, faceRef, rowRef }) {
   assert.equal(run.storedDigests[rowRef], null);
   assertLine(
     run.stderr,
-    `VEECODE prestep: WARNING — ignoring disabled marketplace row "${rowRef}" for protected marketplace face plugin "${faceRef}"; protected plugins: ${PROTECTED_MARKETPLACE_PLUGINS}`,
+    `VEECODE prestep: WARNING — ignoring disabled marketplace row "${rowRef}" for protected factory plugin "${entry.repository}"`,
   );
   assertSummary(run, 0, { pinned: 0, nonOci: 0, skipped: 0, disabled: 0 });
 }
@@ -541,62 +542,58 @@ describe('regenerate-extensions-install.js', () => {
     assertSummary(run, 5, { pinned: 1, nonOci: 1, skipped: 1, disabled: 2 });
   });
 
-  it('maps a selector-less disabled face row to the face package without resolving it', async t => {
+  it('keeps a disabled row of a non-protected factory plugin on the ordinary path', async t => {
     const rowRef = 'oci://registry.test/veecode/faced:1.0.0';
-    const faceRef = pinned('faced', digest(4));
     const run = await runPrestep(t, {
-      prefix: 'prestep_face_disabled_',
+      prefix: 'prestep_factory_disabled_',
       rows: [installation(rowRef, { disabled: true })],
-      faceRefs: [faceRef],
+      factoryEntries: [factory('faced')],
     });
 
     assertWritten(run);
     assert.deepEqual(run.skopeoCalls, []);
     assert.deepEqual(YAML.parse(run.yaml), {
-      plugins: [{ package: faceRef, disabled: true }],
+      plugins: [{ package: rowRef, disabled: true }],
     });
-    assertLine(
-      run.stdout,
-      `VEECODE prestep: face default "${faceRef}": marketplace row "${rowRef}" sets disabled=true`,
-    );
+    assert.ok(!run.stdout.includes('index default wins'), run.stdout);
     assert.equal(run.storedDigests[rowRef], null);
-    assertSummary(run, 0, { pinned: 0, nonOci: 0, skipped: 0, disabled: 0 });
+    assertSummary(run, 1, { pinned: 0, nonOci: 0, skipped: 0, disabled: 1 });
   });
 
-  it('removes pluginConfig from an enabled face row and prints the contract warning', async t => {
+  it('drops an enabled factory row that carries a pluginConfig and warns about it', async t => {
     const rowRef = 'oci://registry.test/veecode/faced:1.0.0';
-    const faceRef = pinned('faced', digest(4));
     const config = {
       package: rowRef,
       disabled: false,
       pluginConfig: { dynamicPlugins: { frontend: { 'example.plugin': {} } } },
     };
     const run = await runPrestep(t, {
-      prefix: 'prestep_face_config_',
+      prefix: 'prestep_factory_config_',
       rows: [installation(rowRef, { config_yaml: YAML.stringify(config) })],
-      faceRefs: [faceRef],
+      factoryEntries: [factory('faced')],
     });
 
     assertWritten(run);
     assert.deepEqual(run.skopeoCalls, []);
-    assert.deepEqual(YAML.parse(run.yaml), {
-      plugins: [{ package: faceRef, disabled: false }],
-    });
+    assert.deepEqual(YAML.parse(run.yaml), { plugins: [] });
     assertLine(
       run.stderr,
-      `VEECODE prestep: WARNING — ignoring the pluginConfig of "${rowRef}": the product face owns the configuration of "${faceRef}"`,
+      `VEECODE prestep: WARNING — ignoring the pluginConfig of "${rowRef}": the catalog index owns the configuration of "registry.test/veecode/faced"`,
+    );
+    assertLine(
+      run.stdout,
+      'VEECODE prestep: index default wins for registry.test/veecode/faced',
     );
     assertSummary(run, 0, { pinned: 0, nonOci: 0, skipped: 0, disabled: 0 });
   });
 
-  it('keeps a row for a different selector on the face repository as a separate plugin', async t => {
-    const faceRef = pinned('faced', digest(4));
+  it('keeps a row for a different selector on the factory repository as a separate plugin', async t => {
     const rowRef = 'oci://registry.test/veecode/faced:1.0.0!other';
     const run = await runPrestep(t, {
       prefix: 'prestep_face_other_selector_',
       rows: [installation(rowRef)],
       registry: { [image('faced')]: digest(5) },
-      faceRefs: [faceRef],
+      factoryEntries: [factory('faced')],
     });
 
     assertWritten(run);
@@ -609,39 +606,71 @@ describe('regenerate-extensions-install.js', () => {
         },
       ],
     });
-    assert.ok(!run.stdout.includes('face default'), run.stdout);
+    assert.ok(!run.stdout.includes('index default wins'), run.stdout);
     assertSummary(run, 1, { pinned: 1, nonOci: 0, skipped: 0, disabled: 0 });
   });
 
-  it('keeps one face row by preferring enabled state and then the newest update', async t => {
-    const faceRef = pinned('faced', digest(4));
+  it('drops an enabled factory row, logs that the index default wins, and prefers it over a newer disabled row', async t => {
     const olderEnabled = versioned('faced', '1.0.0');
     const newerEnabled = versioned('faced', '2.0.0');
     const newestDisabled = versioned('faced', '3.0.0');
     const run = await runPrestep(t, {
-      prefix: 'prestep_face_preferred_',
+      prefix: 'prestep_factory_preferred_',
       rows: [
         installation(olderEnabled, { updated_at: at(10) }),
         installation(newerEnabled, { updated_at: at(20) }),
         installation(newestDisabled, { disabled: true, updated_at: at(30) }),
       ],
-      faceRefs: [faceRef],
+      factoryEntries: [factory('faced')],
     });
 
     assertWritten(run);
     assert.deepEqual(run.skopeoCalls, []);
-    assert.deepEqual(YAML.parse(run.yaml), {
-      plugins: [{ package: faceRef, disabled: false }],
-    });
+    assert.deepEqual(YAML.parse(run.yaml), { plugins: [] });
     assertLine(
       run.stdout,
-      `VEECODE prestep: face default "${faceRef}": marketplace row "${newerEnabled}" sets disabled=false`,
+      'VEECODE prestep: index default wins for registry.test/veecode/faced',
     );
     assertSummary(run, 0, { pinned: 0, nonOci: 0, skipped: 0, disabled: 0 });
   });
 
-  it('leaves a row unchanged when the face does not declare its plugin', async t => {
-    const faceRef = pinned('faced', digest(4));
+  it('treats factory rows as ordinary rows and warns when the factory list is missing', async t => {
+    const rowRef = 'oci://registry.test/veecode/faced:1.0.0';
+    const run = await runPrestep(t, {
+      prefix: 'prestep_factory_missing_',
+      rows: [installation(rowRef)],
+      registry: { [image('faced')]: digest(4) },
+      factoryFilePath: path.join(os.tmpdir(), 'no-such-factory-plugins.yaml'),
+    });
+
+    assertWritten(run);
+    assert.deepEqual(run.skopeoCalls, [`inspect ${image('faced')}`]);
+    assert.deepEqual(YAML.parse(run.yaml), {
+      plugins: [{ package: `oci://registry.test/veecode/faced@${digest(4)}`, disabled: false }],
+    });
+    assert.ok(
+      run.stderr.includes('could not read factory plugin list'),
+      run.stderr,
+    );
+    assertSummary(run, 1, { pinned: 1, nonOci: 0, skipped: 0, disabled: 0 });
+  });
+
+  it('warns that DEVPORTAL_FACE_FILE is no longer read', async t => {
+    const run = await runPrestep(t, {
+      prefix: 'prestep_face_file_set_',
+      rows: [],
+      factoryEntries: [],
+      extraEnv: { DEVPORTAL_FACE_FILE: '/opt/app-root/src/dynamic-plugins.veecode.yaml' },
+    });
+
+    assertWritten(run);
+    assert.ok(
+      run.stderr.includes('WARNING — DEVPORTAL_FACE_FILE is set but no longer read'),
+      run.stderr,
+    );
+  });
+
+  it('leaves a row unchanged when the factory list does not name its plugin', async t => {
     const rowRef = oci('marketplace-only');
     const config = {
       package: rowRef,
@@ -652,7 +681,7 @@ describe('regenerate-extensions-install.js', () => {
       prefix: 'prestep_non_face_row_',
       rows: [installation(rowRef, { config_yaml: YAML.stringify(config) })],
       registry: { [image('marketplace-only')]: digest(6) },
-      faceRefs: [faceRef],
+      factoryEntries: [factory('faced')],
     });
 
     assertWritten(run);
@@ -998,18 +1027,19 @@ describe('regenerate-extensions-install.js', () => {
     });
   });
 
-  it('treats a row matching multiple face selectors as a non-face row', async t => {
+  it('treats a row matching two factory entries of one repository as an ordinary row', async t => {
     const repository = 'oci://registry.test/veecode/bundle';
     const rowRef = `${repository}:1.0.0`;
-    const alphaFace = `${repository}@${digest(4)}!alpha`;
-    const betaFace = `${repository}@${digest(5)}!beta`;
     const run = await runPrestep(t, {
-      prefix: 'prestep_face_ambiguous_selectors_',
+      prefix: 'prestep_factory_ambiguous_',
       rows: [installation(rowRef)],
       registry: {
         'docker://registry.test/veecode/bundle:1.0.0': digest(6),
       },
-      faceRefs: [alphaFace, betaFace],
+      factoryEntries: [
+        { repository: 'registry.test/veecode/bundle', path: 'alpha' },
+        { repository: 'registry.test/veecode/bundle', path: 'beta' },
+      ],
     });
 
     assertWritten(run);
@@ -1017,18 +1047,16 @@ describe('regenerate-extensions-install.js', () => {
       plugins: [{ package: `${repository}@${digest(6)}`, disabled: false }],
     });
     assert.ok(run.stderr.toLowerCase().includes('ambiguous'), run.stderr);
-    for (const ref of [rowRef, alphaFace, betaFace]) {
-      assert.ok(run.stderr.includes(`"${ref}"`), run.stderr);
-    }
+    assert.ok(run.stderr.includes(`"${rowRef}"`), run.stderr);
+    assert.ok(run.stderr.includes('"registry.test/veecode/bundle!alpha"'), run.stderr);
+    assert.ok(run.stderr.includes('"registry.test/veecode/bundle!beta"'), run.stderr);
   });
 
-  it('omits an ambiguous selector-less non-face row after face matching', async t => {
+  it('omits an ambiguous selector-less row after factory matching, and keeps the rest', async t => {
     const repository = 'oci://registry.test/veecode/bundle';
     const rootRef = `${repository}:1.0.0`;
     const alphaRef = `${repository}:2.0.0!market-alpha`;
     const betaRef = `${repository}:3.0.0!market-beta`;
-    const alphaFace = `${repository}@${digest(4)}!face-alpha`;
-    const betaFace = `${repository}@${digest(5)}!face-beta`;
     const refs = [rootRef, alphaRef, betaRef];
     const registry = Object.fromEntries(
       refs.map(ref => [
@@ -1037,12 +1065,15 @@ describe('regenerate-extensions-install.js', () => {
       ]),
     );
     const run = await runPrestep(t, {
-      prefix: 'prestep_face_selectorless_ambiguous_marketplace_',
+      prefix: 'prestep_factory_selectorless_ambiguous_marketplace_',
       rows: refs.map((ref, index) =>
         installation(ref, { updated_at: at(index + 1) }),
       ),
       registry,
-      faceRefs: [alphaFace, betaFace],
+      factoryEntries: [
+        { repository: 'registry.test/veecode/bundle', path: 'face-alpha' },
+        { repository: 'registry.test/veecode/bundle', path: 'face-beta' },
+      ],
     });
 
     assertWritten(run);
@@ -1054,107 +1085,79 @@ describe('regenerate-extensions-install.js', () => {
     for (const ref of [rootRef, alphaRef, betaRef]) {
       assert.ok(run.stderr.includes(`"${ref}"`), run.stderr);
     }
-    assert.ok(run.stderr.includes(`"${alphaFace}"`), run.stderr);
-    assert.ok(run.stderr.includes(`"${betaFace}"`), run.stderr);
+    assert.ok(run.stderr.includes('"registry.test/veecode/bundle!face-alpha"'), run.stderr);
+    assert.ok(run.stderr.includes('"registry.test/veecode/bundle!face-beta"'), run.stderr);
   });
 
-  it('ignores a disabled Marketplace backend OCI face row', async t => {
-    const faceRef =
-      `oci://quay.io/veecode/devportal-marketplace-backend@${digest(4)}` +
-      '!devportal-marketplace-backend';
-    const rowRef = 'oci://quay.io/veecode/devportal-marketplace-backend:bs_1.52.0';
-
-    await assertProtectedDisabledFaceRow(t, {
+  it('drops a disabled row of a protected factory plugin and warns', async t => {
+    await assertProtectedDisabledFactoryRow(t, {
       prefix: 'prestep_protected_backend_',
-      faceRef,
-      rowRef,
+      entry: factory('devportal-marketplace-backend', { protected: true }),
+      rowRef: 'oci://registry.test/veecode/devportal-marketplace-backend:bs_1.52.0',
     });
   });
 
-  it('ignores a disabled catalog provider local-path face row', async t => {
-    const faceRef =
-      './dynamic-plugins/dist/red-hat-developer-hub-backstage-plugin-catalog-backend-module-extensions-dynamic';
+  it('drops an enabled row of a protected factory plugin and logs that the index default wins', async t => {
+    const rowRef = 'oci://registry.test/veecode/devportal-marketplace-backend:bs_1.54.9';
+    const run = await runPrestep(t, {
+      prefix: 'prestep_protected_enabled_',
+      rows: [installation(rowRef)],
+      factoryEntries: [factory('devportal-marketplace-backend', { protected: true })],
+    });
 
-    await assertProtectedDisabledFaceRow(t, {
-      prefix: 'prestep_protected_catalog_local_',
-      faceRef,
-      rowRef: faceRef,
+    assertWritten(run);
+    assert.deepEqual(run.skopeoCalls, []);
+    assert.deepEqual(YAML.parse(run.yaml), { plugins: [] });
+    assertLine(
+      run.stdout,
+      'VEECODE prestep: index default wins for registry.test/veecode/devportal-marketplace-backend',
+    );
+    assertSummary(run, 0, { pinned: 0, nonOci: 0, skipped: 0, disabled: 0 });
+  });
+
+  it('drops a disabled row of a protected catalog provider factory plugin and warns', async t => {
+    await assertProtectedDisabledFactoryRow(t, {
+      prefix: 'prestep_protected_catalog_',
+      entry: factory('red-hat-developer-hub-backstage-plugin-catalog-backend-module-extensions', {
+        protected: true,
+      }),
+      rowRef:
+        'oci://registry.test/veecode/red-hat-developer-hub-backstage-plugin-catalog-backend-module-extensions:0.18.0',
     });
   });
 
-  it('ignores a disabled catalog provider OCI face row', async t => {
-    const faceRef =
-      `oci://quay.io/veecode/red-hat-developer-hub-backstage-plugin-catalog-backend-module-extensions@${digest(4)}` +
-      '!red-hat-developer-hub-backstage-plugin-catalog-backend-module-extensions-dynamic';
-    const rowRef =
-      'oci://quay.io/veecode/red-hat-developer-hub-backstage-plugin-catalog-backend-module-extensions:0.18.0';
-
-    await assertProtectedDisabledFaceRow(t, {
-      prefix: 'prestep_protected_catalog_oci_',
-      faceRef,
-      rowRef,
-    });
-  });
-
-  it('protects exactly the four named entries in the real product face', async t => {
-    const faceFile = path.join(__dirname, '..', 'dynamic-plugins.veecode.yaml');
-    const faceEntries = YAML.parse(fs.readFileSync(faceFile, 'utf8')).plugins;
+  it('protects exactly the four named entries in the real factory list', async t => {
+    const factoryFile = path.join(__dirname, '..', 'factory-plugins.yaml');
+    const entries = YAML.parse(fs.readFileSync(factoryFile, 'utf8')).factoryPlugins;
     const protectedNames = [
       'devportal-marketplace-backend',
       'devportal-marketplace-frontend-dynamic',
       'devportal-pending-changes-dynamic',
       'red-hat-developer-hub-backstage-plugin-catalog-backend-module-extensions',
     ];
-    const namesForRef = packageRef => {
-      let candidates;
-      if (packageRef.startsWith('oci://')) {
-        const [image, selector] = packageRef.slice('oci://'.length).split('!');
-        const noDigest = image.split('@')[0];
-        const lastColon = noDigest.lastIndexOf(':');
-        const lastSlash = noDigest.lastIndexOf('/');
-        const repository =
-          lastColon > lastSlash ? noDigest.slice(0, lastColon) : noDigest;
-        candidates = [repository.split('/').pop(), selector];
-      } else {
-        candidates = [packageRef.replace(/\/+$/, '').split('/').pop()];
-      }
-      return new Set(
-        candidates
-          .filter(Boolean)
-          .flatMap(name => [name, name.replace(/-dynamic$/, '')]),
-      );
-    };
-    const countByProtectedName = Object.fromEntries(
-      protectedNames.map(name => [
-        name,
-        faceEntries.filter(entry => namesForRef(entry.package).has(name)).length,
-      ]),
-    );
-    const protectedEntries = faceEntries.filter(entry =>
-      protectedNames.some(name => namesForRef(entry.package).has(name)),
-    );
+    const protectedEntries = entries.filter(entry => entry.protected === true);
     assert.deepEqual(
-      countByProtectedName,
-      Object.fromEntries(protectedNames.map(name => [name, 1])),
+      protectedEntries.map(entry => entry.path).sort(),
+      [...protectedNames].sort(),
     );
-    assert.equal(protectedEntries.length, protectedNames.length);
+    const rowRef = entry => `oci://${entry.repository}:1.0.0!${entry.path}`;
 
     const run = await runPrestep(t, {
-      prefix: 'prestep_real_face_protected_',
-      rows: faceEntries.map((entry, index) =>
-        installation(entry.package, {
+      prefix: 'prestep_real_factory_protected_',
+      rows: entries.map((entry, index) =>
+        installation(rowRef(entry), {
           disabled: true,
           updated_at: at(index + 1),
         }),
       ),
-      faceFilePath: faceFile,
+      factoryFilePath: factoryFile,
     });
 
     assertWritten(run);
     assert.deepEqual(run.skopeoCalls, []);
-    const expected = faceEntries
-      .filter(entry => !protectedEntries.includes(entry))
-      .map(entry => ({ package: entry.package, disabled: true }))
+    const expected = entries
+      .filter(entry => entry.protected !== true)
+      .map(entry => ({ package: rowRef(entry), disabled: true }))
       .sort((a, b) => a.package.localeCompare(b.package));
     const actual = YAML.parse(run.yaml).plugins
       .map(({ package: packageRef, disabled }) => ({
@@ -1164,7 +1167,12 @@ describe('regenerate-extensions-install.js', () => {
       .sort((a, b) => a.package.localeCompare(b.package));
     assert.deepEqual(actual, expected);
     for (const entry of protectedEntries) {
-      assert.ok(run.stderr.includes(`"${entry.package}"`), run.stderr);
+      assert.ok(
+        run.stderr.includes(
+          `"${rowRef(entry)}" for protected factory plugin "${entry.repository}"`,
+        ),
+        run.stderr,
+      );
     }
   });
 
