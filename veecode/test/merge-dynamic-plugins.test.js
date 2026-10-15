@@ -34,7 +34,7 @@ function runMerge(t, { operatorPlugins, extensionsPlugins }) {
   fs.mkdirSync(dataPath);
   fs.writeFileSync(
     operatorPath,
-    YAML.stringify({ includes: ['dynamic-plugins.veecode.yaml'], plugins: operatorPlugins }),
+    YAML.stringify({ includes: ['dynamic-plugins.default.yaml'], plugins: operatorPlugins }),
   );
   fs.writeFileSync(
     extensionsPath,

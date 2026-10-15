@@ -12,9 +12,9 @@ Mission context and platform vocabulary live in
 
 ## What is ours
 
-- `veecode/` holds the product face (`dynamic-plugins.veecode.yaml`), the
-  baked plugin defaults and the install pre-steps. The image build fails if the
-  face does not have exactly 20 entries or a local entry has no built directory.
+- `veecode/` holds the factory plugin list (`factory-plugins.yaml`, names only),
+  the baked plugin defaults and the install pre-steps. The image build fails if
+  the list carries a package ref or does not mark exactly four entries protected.
 - `dynamic-plugins/` is not on the 1.54 line: RHDH `3ac14d77` removed the wrapper
   workspace and its local plugin wrappers.
 - `backstage.json` is the host Backstage version. `devportal-plugins`
@@ -22,10 +22,9 @@ Mission context and platform vocabulary live in
 
 ## Invariants
 
-- The face keeps exactly 20 entries, and every local entry resolves to a built
-  directory. The build enforces it because `3.0.0-beta.3` shipped a silently
-  partial face: five local refs lacked the `-dynamic` suffix and the installer
-  skipped them with a warning.
+- The factory list holds names only. The catalog index enables those plugins and
+  owns their versions and config, so a plugin update is an index republish, not
+  an image build.
 - This repository never publishes `latest`, `stable` or `2.x` tags. Those
   belong to the 2.x publisher in `devportal-platform`, which writes the same
   Docker Hub repository; `publish-edge.yaml` rejects them.
