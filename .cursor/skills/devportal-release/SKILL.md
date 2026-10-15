@@ -44,13 +44,7 @@ artifacts tagged `bs_<backstage>__<version>`, and the catalog index uses the mov
 3. **Check the Backstage line.** `backstage.json` on `devportal-core` `main` must match the running line (1.54.9
    today). Knex migrations only move forward, so an image from an older line cannot boot on a database a newer one
    migrated.
-4. **Check the face pins.** Run `scripts/check-face-pins.sh main` (set `FACE_FILE` to check an edited face before it
-   merges). The gate gets the catalog-index image, checks that all 20 face digests exist and that no face repository
-   appears in the index's `dynamic-plugins.default.yaml`, and for each face entry with a catalog Package compares the
-   Package digest with the face digest and `spec.version` with the artifact annotation. The `veecode-theme` entry has
-   no catalog Package, so the gate compares its face digest with the source tag in its `# was :<tag>` comment. It
-   needs GitHub and Quay access and `gh`, `yq`, `skopeo`, `jq`, `curl`, `base64` and `tar`.
-5. **Know what ships.** List the commits since the previous image. The last `publish-edge.yaml` run's `headSha`
+4. **Know what ships.** List the commits since the previous image. The last `publish-edge.yaml` run's `headSha`
    marks it, because the workflow creates no git tag:
    `gh run list -R veecode-platform/devportal-core -w publish-edge.yaml -L 3 --json headSha,createdAt`.
    The nightly Qualification on `:edge` (04:17 UTC) shows whether `main` already qualifies.
@@ -63,7 +57,7 @@ gh workflow run publish-edge.yaml -R veecode-platform/devportal-core --ref main 
 ```
 
 It builds amd64 and arm64, pushes `<version>-rc.1`, moves `:edge`, and asserts that both tags share one
-manifest-list digest. It tags every face pin on quay as `face-<version>-<digest>`, so quay cannot collect them. It
+manifest-list digest. It
 never writes `:latest`, `:stable` or `2.x`, which stay frozen on the 2.x line (ADR-012). The hermeto dependency
 prefetch is cached by the lockfiles, so a build whose dependencies did not change skips it.
 
@@ -190,8 +184,8 @@ the release.
 
 ## When the fix lives in a face plugin
 
-The face (`veecode/dynamic-plugins.veecode.yaml`) pins its OCI plugins by digest inside the image, so a rebuilt
-plugin reaches installations only through a new image that pins the new digest.
+The factory plugins are enabled by the catalog index, not pinned in the image, so a rebuilt plugin
+reaches installations through a new index publish that the chart pins.
 
 1. **Fix it in the overlay.** For a dependency inside its existing range, add a `yarn.lock` patch to the workspace's
    `patches/` (generated with `yarn up -R <pkg> --mode=update-lockfile` on the patched source; the format omits
@@ -207,10 +201,6 @@ plugin reaches installations only through a new image that pins the new digest.
    A scoped dispatch skips workspaces unchanged since the last published commit; touch the workspace's
    `plugins-list.yaml` comment in a PR to make the push publish them. The overlays' `check-catalog-packages` fails
    while a deleted tag is missing; publish from that PR's branch first, then rerun the check. Never merge over it.
-4. **Move the face.** Replace the digests in `veecode/dynamic-plugins.veecode.yaml`, keep the `# was :<tag>`
-   comments, and run `FACE_FILE=veecode/dynamic-plugins.veecode.yaml scripts/check-face-pins.sh main`. Then release
-   the image from step 1.
-
 ## Finish
 
 Run `release-status.sh` one last time and keep its output in the release notes or the PR that closes the release.
