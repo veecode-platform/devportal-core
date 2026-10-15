@@ -45,7 +45,7 @@ plugins:
 #    home never registers — it would be a no-op anyway. The recorder
 #    is provided by the veecode-homepage plugin itself (below).
 # Kept in full (disabled) as the one-line revert.
-- package: oci://quay.io/veecode/red-hat-developer-hub-backstage-plugin-dynamic-home-page@sha256:5fb22d07cb78b7bf4bd7fa5b4469aee089e292cd96eefd200197673a5fcd6b1c!red-hat-developer-hub-backstage-plugin-dynamic-home-page # was :bs_1.52.0__1.13.4
+- package: oci://quay.io/veecode/red-hat-developer-hub-backstage-plugin-dynamic-home-page@sha256:06af1022a2958de51498a95f9d477eea5d29c8acc2e9fe000af25fac924d35fd!red-hat-developer-hub-backstage-plugin-dynamic-home-page # was :bs_1.54.9__1.13.4
   disabled: true
   pluginConfig:
     dynamicPlugins:
@@ -348,7 +348,7 @@ plugins:
 
 # ── Marketplace / Extensions (M3 loop) ────────────────────────────────
 # Catalog provider that ingests the extracted index entities.
-- package: oci://quay.io/veecode/red-hat-developer-hub-backstage-plugin-catalog-backend-module-extensions@sha256:9fad03e713fe046ab2b381d243bbc231497dcb27c260aa127fa6fd163254987d!red-hat-developer-hub-backstage-plugin-catalog-backend-module-extensions # was :bs_1.52.0__0.18.0
+- package: oci://quay.io/veecode/red-hat-developer-hub-backstage-plugin-catalog-backend-module-extensions@sha256:1913ab2bf3523556e9d3f0f03483c103cc329b0f9fdc210c2c9b62eb1c6871e0!red-hat-developer-hub-backstage-plugin-catalog-backend-module-extensions # was :bs_1.54.9__0.18.0
   disabled: false
 # VeeCode marketplace backend (byte-identical across tags; owns /api/extensions/*).
 - package: oci://quay.io/veecode/devportal-marketplace-backend@sha256:29d571704b31a7c444efc3af5d1e2c2387e474cb5bba782ff02870451f402a79!devportal-marketplace-backend # was :bs_1.54.9__0.3.0
@@ -464,7 +464,7 @@ plugins:
 - package: oci://quay.io/veecode/backstage-plugin-signals-backend@sha256:fba0c367d0fa243ebf5d97e7db0ee75500d7995d8e57a21c915b5609fedea82a!backstage-plugin-signals-backend # was :bs_1.54.9__0.3.18
   disabled: false
 # ── Tech Radar (GAP-005; pluginConfig copied from 2.x recommended.yaml:44-66) ─
-- package: oci://quay.io/veecode/backstage-community-plugin-tech-radar@sha256:2a5e149c22bdc02f6cf0d1ba6db0113105b284bf05b3806678cca601387f3b63!backstage-community-plugin-tech-radar # was :bs_1.52.0__1.17.0
+- package: oci://quay.io/veecode/backstage-community-plugin-tech-radar@sha256:32bbb5403933a9d3117f175b0cdc00404f62e1841fe7bef2c53b1becfee17d11!backstage-community-plugin-tech-radar # was :bs_1.54.9__1.22.0
   disabled: false
   pluginConfig:
     dynamicPlugins:
@@ -487,5 +487,5 @@ plugins:
           menuItems:
             tech-radar:
               priority: 76
-- package: oci://quay.io/veecode/backstage-community-plugin-tech-radar-backend@sha256:214058752d8efe87276e8e7f124cdf71b8f34d14bfcb57ee4db3f82fdf6415aa!backstage-community-plugin-tech-radar-backend # was :bs_1.52.0__1.16.0
+- package: oci://quay.io/veecode/backstage-community-plugin-tech-radar-backend@sha256:c727ce2f8f766af2f5eac5cee152a5422f140b93fdfdf49f59d28d16874b8213!backstage-community-plugin-tech-radar-backend # was :bs_1.54.9__1.21.0
   disabled: false
