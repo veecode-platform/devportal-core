@@ -272,7 +272,7 @@ plugins:
                 priority: 10
 
 # ── RBAC (frontend UI only; /rbac under Administration; enforcement OFF) ─
-- package: oci://quay.io/veecode/backstage-community-plugin-rbac@sha256:36e9f606223dd6f2e479c3a904d28dfbec7afdcbbb8e2f18cd1d1edbf7f238e6!backstage-community-plugin-rbac # was :bs_1.52.0__1.52.4
+- package: oci://quay.io/veecode/backstage-community-plugin-rbac@sha256:36cc13d76a4a931bde0dc09b627bef7ffc042018c9a2d5a06478276709d925ef!backstage-community-plugin-rbac # was :bs_1.54.9__2.3.1
   disabled: false
   pluginConfig:
     dynamicPlugins:
