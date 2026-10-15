@@ -125,10 +125,13 @@ frontend system. The rows above that name this line describe its state.
   local dynamic-plugin wrappers with `dynamic-plugins/yarn.lock`, the installer move from 0.4.1 to 0.5.0, and keeps
   our revert of RHDH's login-provider change. `8693774c` regenerates `yarn.lock`; `4d8d8ddb` bumps `backstage.json`
   to 1.54.9. Among direct dependencies only `@backstage/plugin-auth-node` moves (0.7.4 to 0.7.5).
-- **Kept at their `3ac14d77` versions for 3.1.0.** `@backstage-community/plugin-rbac-backend` 7.12.5 and
-  `@red-hat-developer-hub/backstage-plugin-translations-backend` 0.3.1 stay for the 3.1.0 release. Moving
-  rbac-backend to 8 needs the RBAC frontend 2.x first: rbac-backend 8 refuses the conditional-policy writes of the
-  RBAC frontend the image ships today.
+- **RBAC moves as a pair.** `@backstage-community/plugin-rbac-backend` goes from 7.12.5 to 8.1.4 on this line, with
+  `plugin-rbac-node` 2.1.1 in `packages/backend` and `plugin-rbac-common` 2.1.1 in `plugins/licensed-users-info-backend`.
+  The RBAC frontend 2.3.1 and rbac-backend 8.1.4 move together: rbac-backend 8 refuses the conditional-policy writes of
+  frontend 1.52.4, and frontend 2.3.1 writes conditions that rbac-backend 7.12.5 refuses. The face's frontend pin in
+  `veecode/dynamic-plugins.veecode.yaml` has to move with them; until it does, the image runs frontend 1.52.4 against
+  backend 8.1.4. `@red-hat-developer-hub/backstage-plugin-translations-backend` stays at 0.3.1, its `3ac14d77` version,
+  and is independent of the pair.
 - **Pre-step pin.** `4c4b6202` moves the config-loader pin in `.github/workflows/veecode-prestep-test.yaml` to
   `@backstage/config-loader@1.11.2`.
 - **Base images and headers.** `768562a4` moves both base images to the 10.2 builds that ship Node.js 24.21.0, and
