@@ -80,8 +80,8 @@ prefetch is cached by the lockfiles, so a build whose dependencies did not chang
 gh workflow run qualification.yaml -R veecode-platform/devportal-chart --ref main -f image_tag=<version>-rc.1
 ```
 
-A minor release that also changes the chart dispatches on the chart's release branch instead:
-`--ref <chart-release-branch>`. The run installs the chart at that ref, so the branch must already pin the catalog index
+A minor release that also changes the chart dispatches on the branch of the chart release pull request instead:
+`--ref <chart-pr-branch>`. The run installs the chart at that ref, so the branch must already pin the catalog index
 that ships. A patch release that moves only the image keeps `--ref main`.
 
 The run resolves the tag to a digest once and installs the chart at the dispatched ref with that image on KinD: the
@@ -206,8 +206,8 @@ One PR to `veecode-platform/docs`, targeting `develop` (staging). `develop` to `
   variables, digests included), `devportal/support.md` and `devportal/migrating-from-2x.md`;
 - a known-issue line in the previous sheet when this release fixes something it shipped.
 
-The docs check (`scripts/v3-docs-check.json` in that repository) fails a page that says "product face", "the face" or
-"face file", "face plugin" or "face entry". Write "plugins enabled by default" instead.
+The docs check (`scripts/v3-docs-check.json` in that repository) fails a page that says "product face", "the face",
+"image face", "face file", "face plugin" or "face entry". Write "plugins enabled by default" instead.
 
 A merge to `main` deploys production and publishes `@veecode-platform/docs-mcp`. Broken links fail the build. The daily
 image-tag bot opens a PR against `main` from 06:00 UTC after the promotion. Do not merge it before step 5 has put the
@@ -243,9 +243,11 @@ pins. The 3.0.x line baked that list into the image, so a patch on that line fol
    while a deleted tag is missing; publish from that PR's branch first, then rerun the check. Never merge over it.
 4. **Index the plugins.** Merging the overlays change to `main` publishes the catalog index. It moves `bs_<backstage>`
    and writes `bs_<backstage>_<timestamp>`. A plugin fix builds no image.
-5. **Pin the new index in the chart.** On the chart's release branch, run `hack/catalog-index-pin.py pin`. It resolves
-   the moving tag, refuses a digest that no timestamped tag points at, and rewrites only `global.catalogIndex.image` in
-   `values.yaml`. Then run `check`.
+5. **Pin the new index in the chart.** On the chart release pull request's branch, run `hack/catalog-index-pin.py pin`.
+   It resolves the moving tag, refuses a digest that no timestamped tag points at, and rewrites only
+   `global.catalogIndex.image` in `values.yaml`. `values.schema.json` and `README.md` in `charts/backstage` also show
+   that default and keep the old digest, and `check` reads only `values.yaml`. Run `pre-commit run --all-files` (it
+   needs helm-docs), commit the three files together, then run `check`.
 6. **Qualify and release the pin.** The pin PR changes more than version fields, so Qualification runs in full on it
    (see "4. Release the chart"). Release it as that section describes, with a new chart `version`, and then move
    devportal-local (see "7. Move the local runner").
