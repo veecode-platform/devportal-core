@@ -176,7 +176,7 @@ jobs:
 
   merge:
       if: github.repository == 'redhat-developer/rhdh' || vars.QUAY_RHDH_IMAGE_REPO != '' || github.event_name == 'workflow_dispatch'
-      runs-on: ubuntu-latest
+      runs-on: ubuntu-24.04
       needs:
         - build-image
       permissions:

@@ -165,7 +165,7 @@ jobs:
 
   merge:
     name: Merge multi-arch manifest and publish tags
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: build-image
     if: ${{ inputs.publish }}
     permissions:
