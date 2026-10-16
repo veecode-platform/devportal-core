@@ -1,6 +1,6 @@
 ---
 name: devportal-release
-description: 'Cut a new DevPortal image (docker.io/veecode/devportal 3.x) and carry it through every repository that consumes it: qualification, promotion, chart, chart index, local runner, overlay smoke tests and the release sheet. Also covers a fix that lives in a product-face plugin. Use when a change on devportal-core main, or a rebuilt face plugin, has to reach a running portal.'
+description: 'Cut a new DevPortal image (docker.io/veecode/devportal 3.x) and carry it through every repository that consumes it: qualification, promotion, chart, chart index, local runner, overlay smoke tests and the release sheet. Also covers a fix in a plugin enabled by default, which ships as a catalog index republish and a chart pin, with no new image. Use when a change on devportal-core main, or a rebuilt default plugin, has to reach a running portal.'
 ---
 # DevPortal release
 
@@ -29,10 +29,12 @@ Script paths are relative to this skill's folder. From the repository root they 
 | 6 | Qualification of the published package (non-blocking) | `qualification.yaml` with `chart_version` | 23 min, in parallel |
 | 7 | `devportal-local` `.chart-pin`, compose digests and version mentions | `chart-bump.yml` opens a PR (nightly, or dispatch it) | a few minutes |
 | 8 | `devportal-plugin-export-overlays` smoke tests | read the image from devportal-local's `main` compose | none |
-| 9 | Release sheet and install pages in `veecode-platform/docs` | a PR to `main` | 5 min of checks |
+| 9 | Release sheet and install pages in `veecode-platform/docs` | a PR to `develop`, then `develop` to `main` | 5 min of checks |
 
-Plugins move only when the release is about them; see "When the fix lives in a face plugin". They are OCI
-artifacts tagged `bs_<backstage>__<version>`, and the catalog index uses the moving tag `bs_<backstage>`.
+Plugins move only when the release is about them; see "When the fix lives in a default plugin". They are OCI
+artifacts tagged `bs_<backstage>__<version>`. The catalog index is published under the moving tag `bs_<backstage>`
+and a timestamped tag `bs_<backstage>_<timestamp>`. The chart pins the index by digest, and the timestamped tag keeps
+that digest available.
 
 ## Before you start
 
@@ -71,10 +73,14 @@ prefetch is cached by the lockfiles, so a build whose dependencies did not chang
 gh workflow run qualification.yaml -R veecode-platform/devportal-chart --ref main -f image_tag=<version>-rc.1
 ```
 
-The run resolves the tag to a digest once and installs the chart at `main` with that image on KinD: the browser
-specs, the install, restart, upgrade from the previous final chart, broken package and rollback sequence, and the
+A minor release that also changes the chart dispatches on the branch of the chart release pull request instead:
+`--ref <chart-pr-branch>`. The run installs the chart at that ref, so the branch must already pin the catalog index
+that ships. A patch release that moves only the image keeps `--ref main`.
+
+The run resolves the tag to a digest once and installs the chart at the dispatched ref with that image on KinD: the
+browser specs, the install, restart, upgrade from the previous final chart, broken package and rollback sequence, and the
 vulnerability scans. The image scan blocks on a critical vulnerability with a fix and no live exception
-(`.trivyignore.yaml`); the scan of the face's OCI plugin artifacts only reports.
+(`.trivyignore.yaml`); the scan of the OCI artifacts that the pinned index enables by default only reports.
 
 **Done when** the run is green. Download its artifacts: `qualification-sequence/qualification-manifest.json` (image
 digest, candidate chart, catalog index digest), `qualification-scan/scan-summary.md` and
@@ -110,6 +116,18 @@ per `ci/*-values.yaml`, each with the upgrade path), and Qualification. Qualific
 `image_tag` run on `main` already qualified this digest with the same chart (`qualification/prior-qualification.sh`;
 the job summary links that run). Anything beyond the version fields makes it qualify again.
 
+Promote the candidate (step 3) before you push the version-field commit. `hack/check-image-pin.py` fetches the final
+tag, so it fails with an HTTP 404 traceback while `<version>` does not exist on Docker Hub.
+
+Before you push, render the chart with the previous release's values. chart-testing installs the previous revision with
+each of its `ci/*-values.yaml` files, then runs `helm upgrade` of the new chart with that same file as `--values`, and
+without `--reuse-values`. A schema rule that rejects a value the previous release set fails every install scenario. So
+run `helm template` on `charts/backstage` with each file from `git show chart-v<previous>:charts/backstage/ci/`, and once
+with the previous release's `values.yaml` in place of the chart's own. Every render must succeed.
+
+The eight install scenarios run on each push to the pull request's head, because `test.yaml` triggers on `pull_request`
+with no paths filter. A commit that is not pushed to the pull request is not install-tested.
+
 Merge with a merge commit, then tag and push:
 
 ```sh
@@ -131,6 +149,9 @@ gh workflow run ingest-devportal-chart.yml -R veecode-platform/next-charts -f ve
 It downloads the release asset, verifies its checksum, commits the package and dispatches `release-charts.yml`.
 Pages deploys a minute later. `next-charts` also serves `veecode-devportal`, so match `next-charts/devportal-<v>.tgz`,
 not `devportal-<v>.tgz`, when you grep the index.
+
+Dispatch it only after `publish-chart-release.yml` for the tag is green. A dispatch a minute after the tag failed to
+download the release assets, and the rerun passed.
 
 **Done when** `helm show chart veecode/devportal --version <chart-version>` resolves after `helm repo update`, and
 the served package's `sha256sum` equals the release's `.sha256`.
@@ -157,22 +178,33 @@ do not show as PR checks (the bot's own `pull_request` runs stay at `action_requ
 It does not touch the version named in the `docker-compose.yml` comments and in `README.md`. Push a commit to the same
 branch that updates them, and search for the old chart version, image version and digest; none should remain.
 
+`chart-bump.yml` does not re-render `dynamic-plugins.yaml`, the derived copy of the chart's plugin file, and
+`scripts/check-config-drift.sh` does not compare it. When the release changes the plugin model, push a follow-up commit
+to the same branch that re-renders it from the chart at the new tag and updates the compose comments that name the old
+plugin file.
+
 **Done when** the dispatched runs are green, the PR is merged, and `release-status.sh` shows the pin and every
 compose on the new image. The overlay smoke-test line turns green at the same moment.
 
 ## 8. Write the release sheet
 
-One PR to `veecode-platform/docs` `main`:
-- `devportal/v3/release-sheets/release-sheet-<x-y-z>.md`, copied from the previous sheet with the next
+One PR to `veecode-platform/docs`, targeting `develop` (staging). `develop` to `main` is the production release:
+- `devportal/release-sheets/release-sheet-<x-y-z>.md`, copied from the previous sheet with the next
   `sidebar_position`, and filled from step 2's artifacts: image and digest, chart and its checksum, the qualified
   catalog index digest and its timestamped tag (`bs_<backstage>_<timestamp>` that points at that digest), the
-  Kubernetes and PostgreSQL versions, the scan table, the exceptions and the face plugin table;
-- `devportal/v3/release-sheets/release-sheets.md`: the new sheet on top;
-- the version moves in `devportal/v3/intro.md`, `devportal/v3/upgrade.md` (the `FROM`/`TO` variables, digests
-  included), `devportal/v3/support.md` and `devportal/migrating-from-2x.md`;
+  Kubernetes and PostgreSQL versions, the scan table, the exceptions and the plugin table, titled "Plugins enabled by
+  default";
+- `devportal/release-sheets/release-sheets.md`: the new sheet on top;
+- the version moves in `devportal/intro.md`, `devportal/installation-guide/production-setup/upgrade.md` (the `FROM`/`TO`
+  variables, digests included), `devportal/support.md` and `devportal/migrating-from-2x.md`;
 - a known-issue line in the previous sheet when this release fixes something it shipped.
 
-A merge to `main` deploys production and publishes `@veecode-platform/docs-mcp`. Broken links fail the build.
+The docs check (`scripts/v3-docs-check.json` in that repository) fails a page that says "product face", "the face",
+"image face", "face file", "face plugin" or "face entry". Write "plugins enabled by default" instead.
+
+A merge to `main` deploys production and publishes `@veecode-platform/docs-mcp`. Broken links fail the build. The daily
+image-tag bot opens a PR against `main` from 06:00 UTC after the promotion. Do not merge it before step 5 has put the
+chart in the Helm index: it moves the bare image tags to the new version while the index still serves the previous chart.
 
 **Done when** the production pages show the new digest, chart checksum and stable version.
 
@@ -182,10 +214,11 @@ Installations that pin a chart version, such as customer and internal deployment
 repositories and follow their own runbooks. This skill ends when the index, the local runner and the docs serve
 the release.
 
-## When the fix lives in a face plugin
+## When the fix lives in a default plugin
 
-The factory plugins are enabled by the catalog index, not pinned in the image, so a rebuilt plugin
-reaches installations through a new index publish that the chart pins.
+The plugins enabled by default come from the catalog index, not from the image. The image keeps only their names
+(`veecode/factory-plugins.yaml`), so a rebuilt plugin reaches installations through a new index publish that the chart
+pins. The 3.0.x line baked that list into the image, so a patch on that line follows the old layout.
 
 1. **Fix it in the overlay.** For a dependency inside its existing range, add a `yarn.lock` patch to the workspace's
    `patches/` (generated with `yarn up -R <pkg> --mode=update-lockfile` on the patched source; the format omits
@@ -201,6 +234,17 @@ reaches installations through a new index publish that the chart pins.
    A scoped dispatch skips workspaces unchanged since the last published commit; touch the workspace's
    `plugins-list.yaml` comment in a PR to make the push publish them. The overlays' `check-catalog-packages` fails
    while a deleted tag is missing; publish from that PR's branch first, then rerun the check. Never merge over it.
+4. **Index the plugins.** Merging the overlays change to `main` publishes the catalog index. It moves `bs_<backstage>`
+   and writes `bs_<backstage>_<timestamp>`. A plugin fix builds no image.
+5. **Pin the new index in the chart.** On the chart release pull request's branch, run `hack/catalog-index-pin.py pin`.
+   It resolves the moving tag, refuses a digest that no timestamped tag points at, and rewrites only
+   `global.catalogIndex.image` in `values.yaml`. `values.schema.json` and `README.md` in `charts/backstage` also show
+   that default and keep the old digest, and `check` reads only `values.yaml`. Run `pre-commit run --all-files` (it
+   needs helm-docs), commit the three files together, then run `check`.
+6. **Qualify and release the pin.** The pin PR changes more than version fields, so Qualification runs in full on it
+   (see "4. Release the chart"). Release it as that section describes, with a new chart `version`, and then move
+   devportal-local (see "7. Move the local runner").
+
 ## Finish
 
 Run `release-status.sh` one last time and keep its output in the release notes or the PR that closes the release.
@@ -213,7 +257,8 @@ scratch directories on the build machine.
   image.
 - **A tag whose `appVersion` lags looks fine until `helm list` reports the wrong version.** `release-status.sh` flags
   it.
-- **Face pins die when quay garbage-collects.** Step 1 anchors them, and the pre-flight checks them.
+- **An index digest dies when quay garbage-collects.** The moving tag moves on, and an untagged digest can be collected.
+  The timestamped tag keeps it, and `catalog-index-pin.py pin` refuses a digest that none points at.
 - **A global yarn resolution can break the hermetic build on a line that has the dynamic-plugin wrappers.** It rewrites
   the lockfile key, and the wrappers' `export-dynamic` runs its own `yarn install` with the old range and no network.
   Move a transitive dependency inside its range with `yarn up -R`; use a resolution only to leave the range, and only at
