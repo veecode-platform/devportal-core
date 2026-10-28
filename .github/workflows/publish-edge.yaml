@@ -186,6 +186,10 @@ jobs:
 
       - name: Assert no forbidden tags (latest / stable / 2.x)
         run: |
+          if [[ "$VERSION" == "edge" ]]; then
+            echo "::error::version must be a version tag; edge moves only through move_edge"
+            exit 1
+          fi
           tags=("$VERSION")
           if [[ "$MOVE_EDGE" == "true" ]]; then tags+=("edge"); fi
           for tag in "${tags[@]}"; do

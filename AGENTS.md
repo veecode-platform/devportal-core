@@ -49,6 +49,11 @@ image scan):
 
 ```bash
 gh workflow run publish-edge.yaml --ref <branch> -f publish=true -f move_edge=false -f version=<next>-pr<N>.<short-sha>
+```
+
+Once that run succeeds, the tag exists and the qualification can resolve it:
+
+```bash
 gh workflow run qualification.yaml -R veecode-platform/devportal-chart --ref main -f image_tag=<next>-pr<N>.<short-sha>
 ```
 
