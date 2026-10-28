@@ -39,6 +39,11 @@ on:
         type: string
         required: false
         default: "3.0.0-alpha.1"
+      move_edge:
+        description: "Also point :edge at this version (false = push only the version tag, for a pull request candidate)"
+        type: boolean
+        required: false
+        default: true
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -172,6 +177,7 @@ jobs:
       contents: read
     env:
       VERSION: ${{ inputs.version }}
+      MOVE_EDGE: ${{ inputs.move_edge }}
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -180,7 +186,9 @@ jobs:
 
       - name: Assert no forbidden tags (latest / stable / 2.x)
         run: |
-          for tag in "$VERSION" "edge"; do
+          tags=("$VERSION")
+          if [[ "$MOVE_EDGE" == "true" ]]; then tags+=("edge"); fi
+          for tag in "${tags[@]}"; do
             if [[ "$tag" == "latest" || "$tag" == "stable" ]]; then
               echo "::error::Forbidden tag detected: $tag"
               exit 1
@@ -190,7 +198,7 @@ jobs:
               exit 1
             fi
           done
-          echo "Tag guard passed: $VERSION edge"
+          echo "Tag guard passed: ${tags[*]}"
 
       - name: Login to Docker Hub
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
@@ -213,17 +221,22 @@ jobs:
       # digest set, so "edge" points at the same manifest-list digest as
       # the immutable version tag structurally, not by a separate step that
       # could drift.
-      - name: Create manifest list and push (version + edge)
+      - name: Create manifest list and push (version, and edge unless move_edge is false)
         working-directory: /tmp/digests
         run: |
-          docker buildx imagetools create \
-            -t "${REGISTRY}/${REGISTRY_IMAGE}:${VERSION}" \
-            -t "${REGISTRY}/${REGISTRY_IMAGE}:edge" \
+          tag_args=(-t "${REGISTRY}/${REGISTRY_IMAGE}:${VERSION}")
+          if [[ "$MOVE_EDGE" == "true" ]]; then tag_args+=(-t "${REGISTRY}/${REGISTRY_IMAGE}:edge"); fi
+          docker buildx imagetools create "${tag_args[@]}" \
             $(printf "${REGISTRY}/${REGISTRY_IMAGE}@sha256:%s " *)
 
       - name: Assert version and edge tags share the same digest
         run: |
           version_digest=$(docker buildx imagetools inspect "${REGISTRY}/${REGISTRY_IMAGE}:${VERSION}" --format '{{json .Manifest}}' | jq -r '.digest')
+          echo "PUBLISHED_DIGEST=$version_digest" >> "$GITHUB_ENV"
+          if [[ "$MOVE_EDGE" != "true" ]]; then
+            echo "::notice::${VERSION} digest: $version_digest (edge not moved)"
+            exit 0
+          fi
           edge_digest=$(docker buildx imagetools inspect "${REGISTRY}/${REGISTRY_IMAGE}:edge" --format '{{json .Manifest}}' | jq -r '.digest')
           echo "::notice::${VERSION} digest: $version_digest"
           echo "::notice::edge digest: $edge_digest"
@@ -231,5 +244,4 @@ jobs:
             echo "::error::edge tag digest ($edge_digest) does not match ${VERSION} digest ($version_digest)"
             exit 1
           fi
-          echo "PUBLISHED_DIGEST=$version_digest" >> "$GITHUB_ENV"
           echo "Published digest (shared by ${VERSION} and edge): $version_digest"

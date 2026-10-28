@@ -42,6 +42,16 @@ gh workflow run publish-edge.yaml --ref <branch> -f publish=false -f version=<an
 
 `scripts/local-hermeto-build.sh` builds locally; it needs podman.
 
+To prove a change in a running portal before it merges, publish a candidate
+that leaves `:edge` alone, then run the chart qualification on it (install,
+Marketplace, upgrade, broken package, restart, rollback, browser specs and
+image scan):
+
+```bash
+gh workflow run publish-edge.yaml --ref <branch> -f publish=true -f move_edge=false -f version=<next>-pr<N>.<short-sha>
+gh workflow run qualification.yaml -R veecode-platform/devportal-chart --ref main -f image_tag=<next>-pr<N>.<short-sha>
+```
+
 ## Release path
 
 Cut a release with the `devportal-release` skill
