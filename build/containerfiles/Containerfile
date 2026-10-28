@@ -266,6 +266,9 @@ RUN microdnf install -y python3.12 skopeo 1>/dev/null 2>&1; \
   alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 1 && \
   microdnf clean all
 
+# Node links the system libbrotli, and this base still ships 1.1.0-8.el10_2 (CVE-2026-111497).
+RUN microdnf install -y libbrotli && microdnf clean all
+
 # Copy openssl binary from build stage (needed for dynamic plugin integrity verification)
 # The nodejs-24-minimal image doesn't include openssl CLI by default
 COPY --from=build /usr/bin/openssl /usr/bin/openssl
