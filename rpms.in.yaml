@@ -124,6 +124,7 @@ packages:
   - libattr
   - libblkid
   - libbpf
+  - libbrotli-1.1.0-8.el10_2.1
   - libcap
   - libcap-ng
   - libcbor
